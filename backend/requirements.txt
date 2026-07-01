@@ -12,3 +12,4 @@ psycopg2-binary>=2.9
 python-multipart>=0.0.9
 PyJWT>=2.8
 beautifulsoup4>=4.12
+openai>=1.40.0

@@ -18,10 +18,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
-async def _fetch_candidate_listings(db: AsyncSession, intent: dict, location: dict | None = None, limit: int = 80) -> list[dict]:
+async def _fetch_candidate_listings(
+    db: AsyncSession,
+    intent: dict,
+    location: dict | None = None,
+    limit: int = 80,
+) -> list[dict]:
     """Pre-filter cached listings based on structured criteria from the intent.
 
-    Returns up to `limit` listings as dicts for Haiku scoring.
+    Returns up to `limit` listings as dicts for ranking.
     """
     query = select(CachedListing).where(CachedListing.is_active == True)
 
@@ -32,6 +37,7 @@ async def _fetch_candidate_listings(db: AsyncSession, intent: dict, location: di
     # Location filter — prioritize the explicit location from the frontend,
     # then fall back to any location tag from intent interpretation
     location_applied = False
+
     if location and location.get("name"):
         query = query.where(CachedListing.suburb.ilike(f"%{location['name']}%"))
         location_applied = True
@@ -48,15 +54,23 @@ async def _fetch_candidate_listings(db: AsyncSession, intent: dict, location: di
     for tag in tags:
         if tag.get("category") == "budget":
             label = tag.get("label", "")
-            # Find all numbers in the label (e.g. "R10,000 - R20,000/month" → [10000, 20000])
-            amounts = [int(m.replace(" ", "").replace(",", "")) for m in re.findall(r"(\d[\d\s,]+)", label)]
+
+            # Example: "R10,000 - R20,000/month" -> [10000, 20000]
+            amounts = [
+                int(m.replace(" ", "").replace(",", ""))
+                for m in re.findall(r"(\d[\d\s,]+)", label)
+            ]
+
             if amounts:
                 max_budget = max(amounts)
+
                 # Allow 20% over stated max for flexibility
                 query = query.where(CachedListing.price_amount <= int(max_budget * 1.2))
+
                 if len(amounts) >= 2:
                     min_budget = min(amounts)
                     query = query.where(CachedListing.price_amount >= int(min_budget * 0.8))
+
                 break
 
     # Bedroom filter
@@ -66,11 +80,12 @@ async def _fetch_candidate_listings(db: AsyncSession, intent: dict, location: di
             query = query.where(CachedListing.bedrooms >= int(bed_match.group(1)))
             break
 
-    # Prefer listings with descriptions (they'll score better)
+    # Prefer listings with descriptions because they score better
     query = query.order_by(
         CachedListing.description.isnot(None).desc(),
         CachedListing.first_seen_at.desc(),
     )
+
     query = query.limit(limit)
 
     result = await db.execute(query)
@@ -101,25 +116,33 @@ async def _fetch_candidate_listings(db: AsyncSession, intent: dict, location: di
     ]
 
 
-async def _run_search_background(search_id: uuid.UUID, query_text: str, location: dict | None):
+async def _run_search_background(
+    search_id: uuid.UUID,
+    query_text: str,
+    location: dict | None,
+):
     """Run the search in the background using its own DB session.
 
     Flow:
-    1. Use Haiku to interpret intent (cheap) — or skip if no API key
-    2. Pre-filter cached listings from our DB
-    3. Use Haiku to score/rank listings against the query (cheap)
-    4. Fallback: return DB results directly if Haiku fails
+    1. Use Claude/Haiku to interpret intent, or use fallback if no API key.
+    2. Pre-filter cached listings from our DB.
+    3. Build structured user preferences.
+    4. Compute optional semantic embedding scores.
+    5. Use transparent Python ranking to score listings.
+    6. Fallback: return DB results directly if ranking fails.
     """
     settings = get_settings()
 
     async with async_session() as db:
-        search = (await db.execute(select(Search).where(Search.id == search_id))).scalar_one()
+        search = (
+            await db.execute(select(Search).where(Search.id == search_id))
+        ).scalar_one()
 
         try:
             search.status = "interpreting"
             await db.commit()
 
-            # Stage 1: Interpret intent with Haiku (cheap)
+            # Stage 1: Interpret intent with Claude/Haiku if available
             intent = {
                 "improved_prompt": query_text,
                 "rank_guidance": "Match closely.",
@@ -129,11 +152,16 @@ async def _run_search_background(search_id: uuid.UUID, query_text: str, location
 
             if settings.ANTHROPIC_API_KEY:
                 from app.services.claude import ClaudeService
+
                 claude = ClaudeService(settings.ANTHROPIC_API_KEY)
+
                 try:
                     intent = await claude.interpret_intent(query_text, location)
                 except Exception:
-                    logger.warning("Intent interpretation failed, using fallback", exc_info=True)
+                    logger.warning(
+                        "Intent interpretation failed, using fallback",
+                        exc_info=True,
+                    )
 
             search.interpreted_intent = {
                 **(search.interpreted_intent or {}),
@@ -146,7 +174,11 @@ async def _run_search_background(search_id: uuid.UUID, query_text: str, location
             await db.commit()
 
             candidates = await _fetch_candidate_listings(db, intent, location)
-            logger.info(f"Search {search_id}: {len(candidates)} candidates from cache (location={location})")
+
+            logger.info(
+                f"Search {search_id}: {len(candidates)} candidates from cache "
+                f"(location={location})"
+            )
 
             # Stage 3: Rank candidates with transparent Python scoring
             results = []
@@ -168,71 +200,107 @@ async def _run_search_background(search_id: uuid.UUID, query_text: str, location
                 await db.commit()
 
                 try:
-                    results = rank_listings(
-                    listings=candidates,
-                    user_preferences=user_preferences,
-                    max_results=10,
-                )
-                    logger.info(f"Search {search_id}: Python ranking returned {len(results)} results")
-                except Exception:
-                    logger.exception(f"Search {search_id}: Python ranking failed, returning candidates directly")
+                    semantic_scores = {}
 
-# Fallback: if ranking returned nothing, return top candidates from DB
+                    if settings.OPENAI_API_KEY:
+                        try:
+                            from app.services.embeddings import compute_semantic_scores
+
+                            semantic_scores = await compute_semantic_scores(
+                                listings=candidates[:30],
+                                user_preferences=user_preferences,
+                                api_key=settings.OPENAI_API_KEY,
+                            )
+
+                            logger.info(
+                                f"Search {search_id}: Computed semantic scores "
+                                f"for {len(semantic_scores)} listings"
+                            )
+
+                        except Exception:
+                            logger.exception(
+                                f"Search {search_id}: Semantic scoring failed, "
+                                "continuing without embeddings"
+                            )
+
+                    results = rank_listings(
+                        listings=candidates,
+                        user_preferences=user_preferences,
+                        max_results=10,
+                        semantic_scores=semantic_scores,
+                    )
+
+                    logger.info(
+                        f"Search {search_id}: Python ranking returned "
+                        f"{len(results)} results"
+                    )
+
+                except Exception:
+                    logger.exception(
+                        f"Search {search_id}: Python ranking failed, "
+                        "returning candidates directly"
+                    )
+
+            # Fallback: if ranking returned nothing, return top candidates from DB
             if not results and candidates:
                 logger.info(f"Search {search_id}: Using direct DB results as fallback")
+
                 results = [
                     {
-            "title": c["title"],
-            "location": c["location"],
-            "price": c["price_display"],
-            "beds": c.get("bedrooms"),
-            "baths": c.get("bathrooms"),
-            "size": f"{c['size_sqm']} m²" if c.get("size_sqm") else None,
-            "furnished": c.get("furnished"),
-            "pets": c.get("pets_allowed"),
-            "lease": None,
-            "amenities": c.get("amenities", []),
-            "match_score": 50,
-            "matched": [],
-            "not_matched": [],
-            "match_reason": "Matched by location and basic filters",
-            "url": c["source_url"],
-            "source": c["source"],
-            "image_url": c.get("image_url"),
-            "availability": c.get("available_from", "now"),
+                        "title": c["title"],
+                        "location": c["location"],
+                        "price": c["price_display"],
+                        "beds": c.get("bedrooms"),
+                        "baths": c.get("bathrooms"),
+                        "size": f"{c['size_sqm']} m²" if c.get("size_sqm") else None,
+                        "furnished": c.get("furnished"),
+                        "pets": c.get("pets_allowed"),
+                        "lease": None,
+                        "amenities": c.get("amenities", []),
+                        "match_score": 50,
+                        "matched": [],
+                        "not_matched": [],
+                        "match_reason": "Matched by location and basic filters",
+                        "url": c["source_url"],
+                        "source": c["source"],
+                        "image_url": c.get("image_url"),
+                        "availability": c.get("available_from", "now"),
                     }
                     for c in candidates[:10]
-    ]
+                ]
 
             results.sort(key=lambda r: r.get("match_score", 0), reverse=True)
 
             for i, r in enumerate(results):
-                db.add(SearchResult(
-                    id=uuid.uuid4(),
-                    search_id=search.id,
-                    title=r.get("title", "Rental"),
-                    location=r.get("location"),
-                    price=r.get("price"),
-                    beds=r.get("beds"),
-                    baths=r.get("baths"),
-                    size=r.get("size"),
-                    furnished=r.get("furnished"),
-                    pets=r.get("pets"),
-                    lease=r.get("lease"),
-                    amenities=r.get("amenities", []),
-                    match_score=r.get("match_score"),
-                    matched=r.get("matched", []),
-                    not_matched=r.get("not_matched", []),
-                    match_reason=r.get("match_reason"),
-                    url=r.get("url"),
-                    source=r.get("source"),
-                    image_url=r.get("image_url"),
-                    availability=r.get("availability"),
-                    rank=i + 1,
-                ))
+                db.add(
+                    SearchResult(
+                        id=uuid.uuid4(),
+                        search_id=search.id,
+                        title=r.get("title", "Rental"),
+                        location=r.get("location"),
+                        price=r.get("price"),
+                        beds=r.get("beds"),
+                        baths=r.get("baths"),
+                        size=r.get("size"),
+                        furnished=r.get("furnished"),
+                        pets=r.get("pets"),
+                        lease=r.get("lease"),
+                        amenities=r.get("amenities", []),
+                        match_score=r.get("match_score"),
+                        matched=r.get("matched", []),
+                        not_matched=r.get("not_matched", []),
+                        match_reason=r.get("match_reason"),
+                        url=r.get("url"),
+                        source=r.get("source"),
+                        image_url=r.get("image_url"),
+                        availability=r.get("availability"),
+                        rank=i + 1,
+                    )
+                )
 
             search.status = "complete"
             await db.commit()
+
             logger.info(f"Search {search_id} complete with {len(results)} results")
 
         except Exception as e:
@@ -248,8 +316,11 @@ async def create_search(req: SearchRequest, db: AsyncSession = Depends(get_db)):
         id=uuid.uuid4(),
         query_text=req.query_text,
         status="pending",
-        interpreted_intent={"location": req.location.model_dump() if req.location else None},
+        interpreted_intent={
+            "location": req.location.model_dump() if req.location else None
+        },
     )
+
     db.add(search)
     await db.commit()
 
@@ -270,6 +341,7 @@ async def get_search_history(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Search).order_by(Search.created_at.desc()).limit(10)
     )
+
     return result.scalars().all()
 
 
@@ -280,8 +352,12 @@ async def get_search(search_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         .options(selectinload(Search.results))
         .where(Search.id == search_id)
     )
+
     search = result.scalar_one_or_none()
+
     if not search:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Search not found")
+
     return search
