@@ -1,0 +1,88 @@
+:root {
+  --bg: #0b0d10;
+  --s1: #12151a;
+  --s2: #181c22;
+  --s3: #1f242c;
+  --b1: rgba(255, 255, 255, 0.07);
+  --b2: rgba(255, 255, 255, 0.13);
+  --b3: rgba(255, 255, 255, 0.2);
+  --t1: #f0ede8;
+  --t2: #9a948e;
+  --t3: #5a5650;
+  --t4: #32302c;
+  --gold: #d4a843;
+  --gold2: #ecc860;
+  --goldg: rgba(212, 168, 67, 0.16);
+  --rs: #f5f2ee;
+  --rsc: #fff;
+  --rsl: #e0d8ce;
+  --ri1: #1a1714;
+  --ri2: #4a4540;
+  --ri3: #8a847c;
+  --grn: #4dd88a;
+  --grn-bg: rgba(77, 216, 138, 0.1);
+  --grn-b: rgba(77, 216, 138, 0.25);
+  --red: #f87070;
+  --red-bg: rgba(248, 112, 112, 0.1);
+  --red-b: rgba(248, 112, 112, 0.25);
+  --blu: #78aff8;
+  --blu-bg: rgba(120, 175, 248, 0.1);
+  --blu-b: rgba(120, 175, 248, 0.25);
+  --pur: #b898f8;
+  --pur-bg: rgba(184, 152, 248, 0.1);
+  --pur-b: rgba(184, 152, 248, 0.25);
+  --ora: #f0a060;
+  --ora-bg: rgba(240, 160, 96, 0.1);
+  --ora-b: rgba(240, 160, 96, 0.25);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Sora", sans-serif;
+  background: var(--bg);
+  color: var(--t1);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes cin {
+  from { opacity: 0; transform: translateY(5px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes cup {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes skp {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes pp {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(0.65); }
+}

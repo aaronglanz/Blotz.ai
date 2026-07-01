@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker compose:*)",
+      "Bash(npm install:*)",
+      "Bash(echo \"PATH=$PATH\")",
+      "Bash(curl -s \"http://localhost:8000/api/search/18f85492-3fc4-402d-952e-7ba36388dfdc\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(f''''Status: {d[\"\"status\"\"]}''''\\); print\\(f''''Results: {len\\(d[\"\"results\"\"]\\)}''''\\); [print\\(f''''  {i+1}. {r[\"\"title\"\"]} - {r[\"\"price\"\"]} - score:{r[\"\"match_score\"\"]} - {r[\"\"url\"\"]}''''\\) for i,r in enumerate\\(d[''''results'''']\\)]\")",
+      "Bash(curl:*)"
+    ]
+  }
+}

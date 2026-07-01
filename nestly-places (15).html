@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nestly — Find your place in words</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0d10;--s1:#12151a;--s2:#181c22;--s3:#1f242c;
+  --b1:rgba(255,255,255,.07);--b2:rgba(255,255,255,.13);--b3:rgba(255,255,255,.2);
+  --t1:#f0ede8;--t2:#9a948e;--t3:#5a5650;--t4:#32302c;
+  --gold:#d4a843;--gold2:#ecc860;--goldg:rgba(212,168,67,.16);
+  --rs:#f5f2ee;--rsc:#fff;--rsl:#e0d8ce;
+  --ri1:#1a1714;--ri2:#4a4540;--ri3:#8a847c;
+  --grn:#4dd88a;--grn-bg:rgba(77,216,138,.1);--grn-b:rgba(77,216,138,.25);
+  --red:#f87070;--red-bg:rgba(248,112,112,.1);--red-b:rgba(248,112,112,.25);
+  --blu:#78aff8;--blu-bg:rgba(120,175,248,.1);--blu-b:rgba(120,175,248,.25);
+  --pur:#b898f8;--pur-bg:rgba(184,152,248,.1);--pur-b:rgba(184,152,248,.25);
+  --ora:#f0a060;--ora-bg:rgba(240,160,96,.1);--ora-b:rgba(240,160,96,.25);
+}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--t1);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+
+/* ── HERO ─────────────────────────────────── */
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:60px 24px 44px;position:relative;overflow:hidden}
+.hero-photo{position:absolute;inset:0;z-index:0;background:url('https://images.unsplash.com/photo-1580060839134-75a5edca2e99?w=1600&q=80') center 40%/cover no-repeat;filter:brightness(.42) saturate(.55)}
+.hero-grade{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,rgba(8,12,18,.5) 0%,rgba(8,12,18,.15) 38%,rgba(8,12,18,.6) 100%)}
+#hexCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+.hero-fade{position:absolute;bottom:0;left:0;right:0;height:200px;z-index:3;background:linear-gradient(transparent,var(--bg))}
+.hi{max-width:680px;margin:0 auto;width:100%;position:relative;z-index:4}
+
+.logo{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin-bottom:36px;opacity:.9}
+.lmark{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--gold),#b88428);display:flex;align-items:center;justify-content:center;font-size:11px;color:#0b0d10;font-weight:700}
+
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(1.9rem,4.8vw,3.3rem);font-weight:500;color:var(--t1);line-height:1.13;margin-bottom:13px;letter-spacing:-.015em}
+.hero-sub{font-size:14.5px;font-weight:300;color:var(--t2);line-height:1.72;margin-bottom:28px;max-width:490px}
+
+.recent-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.recent-chip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:13px;background:var(--s2);border:1px solid var(--b2);color:var(--t2);font-size:11px;cursor:pointer;transition:all .18s}
+.recent-chip:hover{border-color:rgba(212,168,67,.35);color:var(--gold)}
+.recent-chip .rci{font-size:10px;opacity:.5}
+.recent-label{font-size:10.5px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-right:4px}
+
+/* ── CHATBAR ── */
+.chatbar{background:var(--s1);border:1px solid var(--b2);border-radius:22px;overflow:visible;position:relative;transition:border-color .35s,box-shadow .35s}
+.chatbar:focus-within{border-color:rgba(212,168,67,.38);box-shadow:0 0 0 1px rgba(212,168,67,.1),0 24px 64px rgba(0,0,0,.45),0 0 48px rgba(212,168,67,.06)}
+.chatbar::before{content:'';position:absolute;top:0;left:8%;right:8%;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:0;transition:opacity .4s;z-index:2}
+.chatbar:focus-within::before{opacity:.55}
+
+.tw-label{padding:16px 22px 0;font-size:12px;font-weight:500;color:var(--t3);letter-spacing:.04em;min-height:32px;display:flex;align-items:center}
+.tw-static{color:var(--t3)}
+.tw-cursor{display:inline-block;width:2px;height:13px;background:var(--gold);margin-left:1px;border-radius:1px;animation:blink .9s ease-in-out infinite;vertical-align:middle}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.tw-typed{color:var(--t2)}
+
+.cta{width:100%;background:transparent;border:none;padding:8px 22px 14px;font-family:'Sora',sans-serif;font-size:14.5px;font-weight:300;color:var(--t1);resize:none;min-height:80px;outline:none;line-height:1.8;caret-color:var(--gold)}
+.cta::placeholder{color:var(--t4);font-size:14px}
+
+/* ── PLACES AUTOCOMPLETE ── */
+.places-wrap{padding:0 18px 12px;position:relative}
+.places-label{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.places-label::after{content:'';flex:1;height:1px;background:var(--b1)}
+.places-input-row{display:flex;gap:8px;align-items:center}
+.places-input{flex:1;background:var(--s2);border:1px solid var(--b2);border-radius:12px;padding:10px 14px;font-family:'Sora',sans-serif;font-size:13px;color:var(--t1);outline:none;transition:border-color .2s;caret-color:var(--gold)}
+.places-input:focus{border-color:rgba(212,168,67,.38)}
+.places-input::placeholder{color:var(--t3)}
+.places-clear{background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;padding:4px;display:none;line-height:1}
+.places-clear:hover{color:var(--t1)}
+
+.pac-dropdown{position:absolute;left:18px;right:18px;top:calc(100% - 4px);background:var(--s2);border:1px solid var(--b2);border-radius:14px;overflow:hidden;z-index:50;display:none;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.pac-item{padding:11px 14px;cursor:pointer;display:flex;align-items:flex-start;gap:10px;border-bottom:1px solid var(--b1);transition:background .12s}
+.pac-item:last-child{border-bottom:none}
+.pac-item:hover,.pac-item.active{background:var(--s3)}
+.pac-icon{width:30px;height:30px;border-radius:8px;background:var(--goldg);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
+.pac-main{font-size:13px;font-weight:400;color:var(--t1);line-height:1.3}
+.pac-main em{font-style:normal;font-weight:600;color:var(--gold2)}
+.pac-sub{font-size:11px;color:var(--t3);margin-top:2px}
+.pac-type{font-size:10px;font-weight:500;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-left:auto;flex-shrink:0;padding-top:3px}
+.pac-empty{padding:14px;font-size:12px;color:var(--t3);text-align:center}
+
+/* Selected location pill */
+.loc-pill{display:inline-flex;align-items:center;gap:6px;background:var(--goldg);border:1px solid rgba(212,168,67,.3);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--gold2);margin-top:8px;cursor:pointer;transition:all .18s}
+.loc-pill:hover{background:rgba(212,168,67,.22)}
+.loc-pill .lp-x{opacity:.5;font-size:11px}
+
+/* API key row */
+.api-row{padding:10px 18px 12px;border-top:1px solid var(--b1);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.api-row-label{font-size:11px;color:var(--t3);flex-shrink:0}
+.api-key-input{flex:1;min-width:160px;background:var(--s2);border:1px solid var(--b2);border-radius:8px;padding:6px 10px;font-family:monospace;font-size:11px;color:var(--t2);outline:none;transition:border-color .2s}
+.api-key-input:focus{border-color:rgba(212,168,67,.38)}
+.api-save-btn{background:var(--goldg);border:1px solid rgba(212,168,67,.3);border-radius:8px;padding:6px 12px;font-family:'Sora',sans-serif;font-size:11px;color:var(--gold);cursor:pointer;white-space:nowrap;transition:all .18s}
+.api-save-btn:hover{background:rgba(212,168,67,.22)}
+.api-mode{font-size:10px;font-weight:600;letter-spacing:.08em;padding:3px 9px;border-radius:20px}
+.api-mode.demo{background:rgba(255,255,255,.06);color:var(--t3);border:1px solid var(--b1)}
+.api-mode.live{background:var(--grn-bg);color:var(--grn);border:1px solid var(--grn-b)}
+
+/* Chips */
+.chips-wrap{border-top:1px solid var(--b1);padding:0 18px 16px}
+.chip-group{margin-top:13px}
+.cg-label{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.cg-label::after{content:'';flex:1;height:1px;background:var(--b1)}
+.cg-row{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 14px;border-radius:16px;font-family:'Sora',sans-serif;font-size:12px;font-weight:400;cursor:pointer;user-select:none;white-space:nowrap;transition:all .18s ease;border:1px solid transparent;animation:cin .2s ease both;position:relative}
+.chip::after{content:'';position:absolute;inset:0;border-radius:16px;background:linear-gradient(135deg,rgba(255,255,255,.055),transparent);pointer-events:none}
+@keyframes cin{from{opacity:0;transform:translateY(5px) scale(.92)}to{opacity:1;transform:translateY(0) scale(1)}}
+.chip:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.chip:active{transform:scale(.96)}
+.chip.on{font-weight:500}
+.cx{opacity:.42;font-size:12px;margin-left:1px}
+.cn{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:#a0988e}
+.cn:hover,.cn.on{background:rgba(212,168,67,.13);border-color:rgba(212,168,67,.32);color:var(--gold2)}
+.cg{background:var(--grn-bg);border-color:var(--grn-b);color:var(--grn)}
+.cg:hover,.cg.on{background:rgba(77,216,138,.18);border-color:rgba(77,216,138,.45);color:#80ffb8}
+.cb{background:var(--blu-bg);border-color:var(--blu-b);color:var(--blu)}
+.cb:hover,.cb.on{background:rgba(120,175,248,.18);border-color:rgba(120,175,248,.45);color:#a0ccff}
+.co{background:var(--ora-bg);border-color:var(--ora-b);color:var(--ora)}
+.co:hover,.co.on{background:rgba(240,160,96,.18);border-color:rgba(240,160,96,.45);color:#ffcc90}
+.cp{background:var(--pur-bg);border-color:var(--pur-b);color:var(--pur)}
+.cp:hover,.cp.on{background:rgba(184,152,248,.18);border-color:rgba(184,152,248,.45);color:#d4b8ff}
+
+/* Autocomplete for location bubble removed */
+.loc-pac.open{display:block}
+.loc-pac-item{padding:10px 14px;cursor:pointer;display:flex;align-items:flex-start;gap:9px;border-bottom:1px solid var(--b1);transition:background .12s;font-size:12px}
+.loc-pac-item:last-child{border-bottom:none}
+.loc-pac-item:hover,.loc-pac-item.active{background:var(--s3)}
+.loc-pac-main{color:var(--t1);line-height:1.3}
+.loc-pac-main em{font-style:normal;font-weight:600;color:var(--gold2)}
+.loc-pac-sub{font-size:10.5px;color:var(--t3);margin-top:1px}
+.loc-pac-empty{padding:12px 14px;font-size:12px;color:var(--t3);text-align:center}
+
+.cbar-foot{display:flex;align-items:center;justify-content:space-between;padding:11px 18px 15px;border-top:1px solid var(--b1);flex-wrap:wrap;gap:10px}
+.cfhint{font-size:11px;color:var(--t3)}
+.cfhint kbd{background:rgba(255,255,255,.06);border:1px solid var(--b2);border-radius:4px;padding:1px 5px;font-size:10px;font-family:monospace;color:var(--t2)}
+.sbtn{background:linear-gradient(135deg,var(--gold) 0%,#b88428 100%);color:#0b0d10;border:none;border-radius:12px;padding:10px 22px;font-family:'Sora',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:7px;letter-spacing:.01em;transition:all .2s;box-shadow:0 4px 18px rgba(212,168,67,.22);position:relative;overflow:hidden}
+.sbtn::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.14),transparent);pointer-events:none}
+.sbtn:hover{transform:translateY(-1px);box-shadow:0 6px 26px rgba(212,168,67,.32)}
+.sbtn:active{transform:scale(.97)}
+.sbtn:disabled{opacity:.38;cursor:not-allowed;transform:none;box-shadow:none}
+.spin{width:13px;height:13px;border:2px solid rgba(0,0,0,.18);border-top-color:#0b0d10;border-radius:50%;animation:spin .65s linear infinite;display:none}
+.sbtn.loading .spin{display:block}
+.sbtn.loading .slbl{opacity:.6}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.trust-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}
+.trust-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:500;border:1px solid transparent;transition:all .18s}
+.tb-p24{background:rgba(0,160,80,.12);border-color:rgba(0,160,80,.3);color:#50e898}
+.tb-pp{background:rgba(80,120,255,.12);border-color:rgba(80,120,255,.3);color:#88b8ff}
+.tb-pg{background:rgba(212,168,67,.12);border-color:rgba(212,168,67,.3);color:var(--gold2)}
+.tb-seeff{background:rgba(220,80,80,.12);border-color:rgba(220,80,80,.3);color:#f89898}
+.tb-remax{background:rgba(180,80,240,.12);border-color:rgba(180,80,240,.3);color:#d090ff}
+.trust-badge .tb-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.7}
+
+/* ── RESULTS ── */
+.rs{background:var(--rs);padding:40px 24px 80px}
+.rsi{max-width:720px;margin:0 auto}
+
+/* Location context bar */
+.loc-ctx{background:var(--rsc);border:1px solid var(--rsl);border-radius:14px;padding:16px 20px;margin-bottom:20px;display:none}
+.loc-ctx.on{display:block}
+.lc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.lc-name{font-family:'Playfair Display',serif;font-size:18px;color:var(--ri1)}
+.lc-badge{font-size:10px;font-weight:600;letter-spacing:.08em;padding:3px 9px;border-radius:20px;background:#eaf5ee;color:#2a6348;border:1px solid #a8d8b8}
+.lc-meta{display:flex;gap:8px;flex-wrap:wrap}
+.lc-tag{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--rs);border:1px solid var(--rsl);color:var(--ri2)}
+.lc-addr{font-size:12px;color:var(--ri3);margin-top:8px}
+
+/* Nearby places */
+.nearby-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:12px}
+.nb-card{background:var(--rs);border:1px solid var(--rsl);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;transition:all .15s}
+.nb-card:hover{border-color:var(--gold);background:#fffbe8}
+.nb-ico{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.nb-ico-school{background:#e8f0ff}
+.nb-ico-food{background:#fff0e8}
+.nb-ico-park{background:#eaf5ee}
+.nb-ico-shop{background:#f0ecff}
+.nb-ico-transit{background:#e8f8ff}
+.nb-txt strong{display:block;font-size:11.5px;font-weight:500;color:var(--ri1);line-height:1.2}
+.nb-txt span{font-size:10.5px;color:var(--ri3)}
+
+.phase{background:var(--rsc);border:1px solid var(--rsl);border-radius:14px;padding:16px 20px;margin-bottom:18px;display:none}
+.phase.on{display:block}
+.ph-hdr{font-size:12.5px;font-weight:600;color:var(--ri1);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.pdot{width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pp 1.1s ease-in-out infinite;flex-shrink:0}
+@keyframes pp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.25;transform:scale(.65)}}
+.psteps{display:flex;flex-direction:column;gap:5px}
+.pstep{font-size:12px;color:var(--ri3);padding:6px 12px;border-radius:8px;background:var(--rs);display:flex;align-items:center;gap:7px;transition:all .3s}
+.pstep.active{background:#fffae0;color:#7a5010;font-weight:500}
+.pstep.done{color:#2a6348}
+.pstep .si{font-size:12px;width:16px;text-align:center}
+
+.rh{display:none;align-items:baseline;justify-content:space-between;margin-bottom:16px}
+.rh.on{display:flex}
+.rh-t{font-family:'Playfair Display',serif;font-size:21px;font-weight:500;color:var(--ri1)}
+.rh-t b{color:var(--gold);font-weight:500}
+.rh-m{font-size:11.5px;color:var(--ri3)}
+
+.banner{background:#fff8e4;border:1px solid #e8c870;border-radius:10px;padding:11px 15px;margin-bottom:14px;font-size:12px;color:#7a5010;line-height:1.55;display:none}
+.banner.on{display:block}
+.errbox{background:#fff0f0;border:1px solid #ffc0c0;border-radius:10px;padding:11px 15px;color:#b03030;font-size:12.5px;display:none;margin-bottom:14px}
+.errbox.on{display:block}
+
+.sk{background:var(--rsc);border-radius:14px;border:1px solid var(--rsl);height:200px;animation:skp 1.4s ease-in-out infinite;display:none}
+.sk.on{display:block}
+@keyframes skp{0%,100%{opacity:1}50%{opacity:.3}}
+.grid{display:flex;flex-direction:column;gap:16px}
+
+/* ── CARD ── */
+.card{background:var(--rsc);border-radius:18px;overflow:hidden;border:1px solid var(--rsl);display:flex;flex-direction:column;transition:box-shadow .22s,transform .2s;animation:cup .38s ease both;position:relative}
+.card:hover{box-shadow:0 8px 36px rgba(28,23,18,.11);transform:translateY(-2px)}
+@keyframes cup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.save-btn{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.9);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;z-index:3;transition:all .18s;backdrop-filter:blur(4px)}
+.save-btn:hover{background:#fff;transform:scale(1.1)}
+.save-btn.saved{color:#e84040}
+.crank-badge{position:absolute;top:12px;left:12px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:13px;color:rgba(255,255,255,.8);z-index:3}
+.avail-badge{position:absolute;bottom:12px;left:12px;padding:4px 10px;border-radius:20px;font-size:10.5px;font-weight:600;z-index:3;backdrop-filter:blur(6px)}
+.av-now{background:rgba(77,216,138,.85);color:#0a2a18}
+.av-rare{background:rgba(212,168,67,.85);color:#2a1800}
+.cimg-wrap{width:100%;height:200px;overflow:hidden;background:#e4dcd0;position:relative;flex-shrink:0}
+.cimg-wrap img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
+.card:hover .cimg-wrap img{transform:scale(1.03)}
+.cph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:36px;color:#c0b8b0;background:linear-gradient(135deg,#ece4d8,#ddd4c8)}
+.cbody{padding:16px 18px 18px}
+.ctop{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px}
+.ctitle{font-family:'Playfair Display',serif;font-size:15px;font-weight:500;line-height:1.28;color:var(--ri1)}
+.cprice{font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;color:var(--ri1)}
+.cloc{font-size:11.5px;color:var(--ri3);margin-bottom:9px}
+.cstats{display:flex;gap:10px;margin-bottom:9px;flex-wrap:wrap}
+.cstat{font-size:11.5px;color:var(--ri2)}
+.cpills{display:flex;gap:4px;margin-bottom:9px;flex-wrap:wrap}
+.pill{font-size:10px;padding:2px 8px;border-radius:20px}
+.pb{background:#f0ece6;color:var(--ri2);border:1px solid #e0d8ce}
+.py{background:#eaf5ee;color:#2a6348;border:1px solid #a8d8b8}
+.pn{background:#f8eef0;color:#903040;border:1px solid #e0b0b8}
+.ps{background:var(--rs);color:var(--ri3);border:1px solid #ddd5c8;font-style:italic}
+.ctags{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.ctag{background:var(--rs);border:1px solid var(--rsl);border-radius:20px;padding:2px 8px;font-size:10px;color:var(--ri2)}
+.match-section{border-top:1px solid var(--rsl);padding-top:13px}
+.match-top{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.mscore{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;border:2px solid}
+.mshi{background:#eaf5ee;color:#2a6348;border-color:#a8d8b8}
+.msmi{background:#fff8e4;color:#c4a043;border-color:#e8c870}
+.mslo{background:#f3f1ee;color:#8a847c;border-color:#d0cbc4}
+.mreason{font-size:12px;color:var(--ri2);line-height:1.6;flex:1}
+.match-lists{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.ml-hdr{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:4px}
+.ml-hdr-yes{color:#2a6348}
+.ml-hdr-no{color:#903040}
+.ml-item{font-size:11.5px;padding:4px 8px;border-radius:6px;margin-bottom:3px;display:flex;align-items:center;gap:5px;line-height:1.3}
+.ml-yes{background:#eaf5ee;color:#1a4028}
+.ml-no{background:#f8eef0;color:#6a2830}
+.ml-icon{font-size:11px;flex-shrink:0}
+.clink{display:inline-flex;align-items:center;gap:3px;margin-top:10px;font-size:11.5px;color:var(--gold);font-weight:500;text-decoration:none}
+.clink:hover{text-decoration:underline}
+
+.empty{text-align:center;padding:52px 20px;display:none}
+.empty.on{display:block}
+.empty .eico{font-size:40px;margin-bottom:12px}
+.empty h3{font-family:'Playfair Display',serif;font-size:19px;font-weight:500;color:var(--ri1);margin-bottom:7px}
+.empty p{font-size:13px;color:var(--ri3);line-height:1.65}
+
+/* Map embed */
+.map-wrap{border-radius:12px;overflow:hidden;border:1px solid var(--rsl);margin-top:12px;display:none}
+.map-wrap.on{display:block}
+.map-wrap iframe{width:100%;height:220px;border:none;display:block}
+
+@media(max-width:560px){
+  .hero{padding:48px 18px 36px;min-height:auto}
+  .hero h1{font-size:1.9rem}
+  .match-lists{grid-template-columns:1fr}
+  .cimg-wrap{height:170px}
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-photo"></div>
+  <div class="hero-grade"></div>
+  <canvas id="hexCanvas"></canvas>
+  <div class="hero-fade"></div>
+
+  <div class="hi">
+    <div class="logo"><div class="lmark">N</div>Nestly</div>
+    <h1>Howzit! Describe your<br>ideal rental. We'll find it.</h1>
+    <p class="hero-sub">Get specific — natural light, a balcony, quiet streets, beach walks… we'll find places that match.</p>
+
+    <div id="recentRow" class="recent-row" style="display:none"></div>
+
+    <div class="chatbar" id="chatbar">
+      <div class="tw-label">
+        <span class="tw-static">I am looking for </span><span class="tw-typed" id="twTyped"></span><span class="tw-cursor" id="twCursor"></span>
+      </div>
+
+      <textarea class="cta" id="qta" rows="3"
+        placeholder="…a quiet 2-bed with a sea-facing balcony, natural light, walkable to cafés, modern building with a pool…"
+        oninput="onType()"></textarea>
+
+      <!-- ── API KEY ── -->
+      <div class="api-row">
+        <span class="api-row-label">Google API key:</span>
+        <input type="password" class="api-key-input" id="gKeyInput" placeholder="AIza…" />
+        <button class="api-save-btn" onclick="saveGKey()">Save</button>
+        <span class="api-mode demo" id="apiMode">Demo mode</span>
+        <span style="font-size:10px;color:var(--t3);margin-left:4px">· Anthropic key for AI search:</span>
+        <input type="password" class="api-key-input" id="kInput" placeholder="sk-ant-…" style="width:130px;flex:none" />
+        <button class="api-save-btn" onclick="saveKey()">Save</button>
+      </div>
+
+      <!-- ── CHIPS ── -->
+      <div class="chips-wrap">
+        <div class="chip-group">
+          <div class="cg-label">Furnished?</div>
+          <div class="cg-row">
+            <span class="chip cn" onclick="tap(this,'fully furnished')">🛋 Furnished</span>
+            <span class="chip cn" onclick="tap(this,'unfurnished — I have my own furniture')">📦 Unfurnished</span>
+          </div>
+        </div>
+        <div class="chip-group">
+          <div class="cg-label">Bedrooms</div>
+          <div class="cg-row">
+            <span class="chip cn" onclick="tap(this,'a studio or bachelor flat')">Studio</span>
+            <span class="chip cn" onclick="tap(this,'1 bedroom')">1 bed</span>
+            <span class="chip cn" onclick="tap(this,'2 bedrooms')">2 beds</span>
+            <span class="chip cn" onclick="tap(this,'3 bedrooms')">3 beds</span>
+            <span class="chip cn" onclick="tap(this,'4 or more bedrooms')">4+ beds</span>
+            <span class="chip cn" onclick="tap(this,'with a separate guest bathroom')">+ Guest bath</span>
+            <span class="chip cn" onclick="tap(this,'with en-suite bathrooms')">En-suite</span>
+          </div>
+        </div>
+        <div class="chip-group">
+          <div class="cg-label">Monthly budget</div>
+          <div class="cg-row">
+            <span class="chip co" onclick="tapOne(this,'budget',['b1','b2','b3','b4'],'budget under R10,000/month')">Under R10k</span>
+            <span class="chip co" data-bid="b1" onclick="tapOne(this,'budget',['b1','b2','b3','b4'],'budget between R10,000 and R20,000/month')">R10–20k</span>
+            <span class="chip co" data-bid="b2" onclick="tapOne(this,'budget',['b2','b3','b4'],'budget between R20,000 and R35,000/month')">R20–35k</span>
+            <span class="chip co" data-bid="b3" onclick="tapOne(this,'budget',['b3','b4'],'budget between R35,000 and R60,000/month')">R35–60k</span>
+            <span class="chip co" data-bid="b4" onclick="tapOne(this,'budget',['b4'],'budget above R60,000/month')">R60k+</span>
+          </div>
+        </div>
+        <div class="chip-group">
+          <div class="cg-label">Area</div>
+          <div class="cg-row" id="areaChipRow">
+            <span class="chip cp" onclick="tapLoc(this,'Sea Point')">Sea Point</span>
+            <span class="chip cp" onclick="tapLoc(this,'Green Point')">Green Point</span>
+            <span class="chip cp" onclick="tapLoc(this,'Camps Bay')">Camps Bay</span>
+            <span class="chip cp" onclick="tapLoc(this,'Bantry Bay')">Bantry Bay</span>
+            <span class="chip cp" onclick="tapLoc(this,'Clifton')">Clifton</span>
+            <span class="chip cp" onclick="tapLoc(this,'Mouille Point')">Mouille Point</span>
+            <span class="chip cp" onclick="tapLoc(this,'De Waterkant')">De Waterkant</span>
+            <span class="chip cp" onclick="tapLoc(this,'City Bowl')">City Bowl</span>
+            <span class="chip cp" onclick="tapLoc(this,'Oranjezicht')">Oranjezicht</span>
+            <span class="chip cp" onclick="tapLoc(this,'Fresnaye')">Fresnaye</span>
+            <span class="chip cp" onclick="tapLoc(this,'Woodstock')">Woodstock</span>
+            <span class="chip cp" onclick="tapLoc(this,'Observatory')">Observatory</span>
+            <span class="chip cp" onclick="tapLoc(this,'Constantia')">Constantia</span>
+            <span class="chip cp" onclick="tapLoc(this,'Claremont')">Claremont</span>
+            <span class="chip cp" onclick="tapLoc(this,'Hout Bay')">Hout Bay</span>
+            <span class="chip cp" onclick="tapLoc(this,'Bloubergstrand')">Bloubergstrand</span>
+          </div>
+        </div>
+        <div class="chip-group">
+          <div class="cg-label">Views &amp; feel</div>
+          <div class="cg-row">
+            <span class="chip cg" onclick="tap(this,'with sea views')">🌊 Sea views</span>
+            <span class="chip cg" onclick="tap(this,'with mountain views')">⛰ Mountain views</span>
+            <span class="chip cg" onclick="tap(this,'with lots of natural light and sunlight throughout the day')">☀️ Natural sunlight</span>
+            <span class="chip cg" onclick="tap(this,'on a quiet street — not on a main or busy road')">🤫 Quiet street</span>
+            <span class="chip cg" onclick="tap(this,'with a private balcony or patio')">🪴 Balcony</span>
+            <span class="chip cg" onclick="tap(this,'within walking distance of the beach or promenade')">🏖 Walk to beach</span>
+            <span class="chip cg" onclick="tap(this,'in a walkable area with cafés and restaurants nearby')">☕ Walkable</span>
+            <span class="chip cg" onclick="tap(this,'with a garden or private outdoor space')">🌿 Garden</span>
+            <span class="chip cg" onclick="tap(this,'east or north-facing for morning sun')">🌅 Morning sun</span>
+            <span class="chip cg" onclick="tap(this,'in a trendy, vibrant neighbourhood')">🎨 Trendy area</span>
+          </div>
+        </div>
+        <div class="chip-group">
+          <div class="cg-label">Building</div>
+          <div class="cg-row">
+            <span class="chip cb" onclick="tap(this,'with a swimming pool')">🏊 Pool</span>
+            <span class="chip cb" onclick="tap(this,'with a gym in the building')">💪 Gym</span>
+            <span class="chip cb" onclick="tap(this,'with 24-hour security')">🔒 24hr security</span>
+            <span class="chip cb" onclick="tap(this,'with secure parking')">🚗 Parking</span>
+            <span class="chip cb" onclick="tap(this,'with a double garage')">🏠 Double garage</span>
+            <span class="chip cb" onclick="tap(this,'with a lift in the building')">🛗 Lift</span>
+            <span class="chip cb" onclick="tap(this,'with fibre internet already installed')">🌐 Fibre</span>
+            <span class="chip cb" onclick="tap(this,'with solar panels or backup power for load-shedding')">⚡ Solar/backup</span>
+            <span class="chip cb" onclick="tap(this,'in a small boutique building — not a large complex')">🏡 Boutique</span>
+            <span class="chip cb" onclick="tap(this,'with concierge or building management service')">🎩 Concierge</span>
+          </div>
+        </div>
+        <div class="chip-group">
+          <div class="cg-label">Lifestyle</div>
+          <div class="cg-row">
+            <span class="chip cg" onclick="tap(this,'in a modern apartment with contemporary finishes and a modern kitchen')">✨ Modern finishes</span>
+            <span class="chip cg" onclick="tap(this,'with an open plan kitchen and living area')">🏗 Open plan</span>
+            <span class="chip cg" onclick="tap(this,'with lots of built-in cupboards and storage space')">🗄 Lots of storage</span>
+            <span class="chip cg" onclick="tap(this,'where pets are allowed')">🐾 Pet friendly</span>
+            <span class="chip cg" onclick="tap(this,'good for working from home — quiet with fast internet')">💻 Work from home</span>
+            <span class="chip cg" onclick="tap(this,'ideal for a lock-up-and-go lifestyle — I travel frequently')">✈️ Lock-up-and-go</span>
+            <span class="chip cg" onclick="tap(this,'great for entertaining — good flow and layout')">🥂 For entertaining</span>
+            <span class="chip cg" onclick="tap(this,'suitable for a family with children — safe and spacious')">👨‍👩‍👧 Family home</span>
+            <span class="chip cg" onclick="tap(this,'near good schools')">🎓 Near schools</span>
+            <span class="chip cg" onclick="tap(this,'with a feeling of privacy — not overlooked by neighbours')">🚪 Private feel</span>
+            <span class="chip cg" onclick="tap(this,'available on a short lease or month-to-month basis')">📋 Short lease</span>
+            <span class="chip cg" onclick="tap(this,'with water and levies included in the rent')">💧 Bills included</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cbar-foot">
+        <span class="cfhint">Describe freely · AI expands your intent &nbsp;·&nbsp; <kbd>⌘ Enter</kbd></span>
+        <button class="sbtn" id="sBtn" onclick="run()">
+          <div class="spin"></div>
+          <span class="slbl">Find my rental →</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="trust-row">
+      <div class="trust-badge tb-p24"><span class="tb-dot"></span>Property24</div>
+      <div class="trust-badge tb-pp"><span class="tb-dot"></span>Private Property</div>
+      <div class="trust-badge tb-pg"><span class="tb-dot"></span>Pam Golding</div>
+      <div class="trust-badge tb-seeff"><span class="tb-dot"></span>Seeff</div>
+      <div class="trust-badge tb-remax"><span class="tb-dot"></span>RE/MAX</div>
+    </div>
+  </div>
+</div>
+
+<!-- RESULTS -->
+<div class="rs">
+  <div class="rsi">
+
+    <!-- Location context panel (shows after Places selection) -->
+    <div class="loc-ctx" id="locCtx">
+      <div class="lc-top">
+        <div class="lc-name" id="lcName">—</div>
+        <div class="lc-badge" id="lcBadge">Located</div>
+      </div>
+      <div class="lc-meta" id="lcMeta"></div>
+      <div class="lc-addr" id="lcAddr"></div>
+      <div class="map-wrap on" id="mapWrap"></div>
+      <div style="font-size:11px;color:var(--ri3);margin-top:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Nearby</div>
+      <div class="nearby-grid" id="nearbyGrid"></div>
+    </div>
+
+    <div class="phase" id="phaseBox">
+      <div class="ph-hdr"><span class="pdot"></span><span id="phTitle">Analysing…</span></div>
+      <div class="psteps" id="psteps"></div>
+    </div>
+
+    <div class="banner" id="banner"></div>
+    <div class="errbox" id="errbox"></div>
+
+    <div class="rh" id="rh">
+      <div class="rh-t">Found <b id="rCount">0</b> rentals</div>
+      <div class="rh-m">Ranked by lifestyle match</div>
+    </div>
+
+    <div id="sks" style="display:flex;flex-direction:column;gap:14px">
+      <div class="sk" id="sk1"></div>
+      <div class="sk" id="sk2"></div>
+      <div class="sk" id="sk3"></div>
+    </div>
+
+    <div class="grid" id="rGrid"></div>
+
+    <div class="empty on" id="empty">
+      <div class="eico">🌅</div>
+      <h3>Your Cape Town rental is out there</h3>
+      <p>Use the chat bar above to describe your ideal life.<br>Search a location with Google Places, then hit Find.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── STATE ──
+let GOOGLE_KEY = localStorage.getItem('nestly_gk') || '';
+let ANT_KEY    = localStorage.getItem('nestly_k')  || '';
+let isLive     = false;
+let autocompleteService = null;
+let placesService = null;
+let selectedPlace = null;
+let activeChips = new Set();
+let saved = new Set(JSON.parse(localStorage.getItem('nestly_saved')||'[]'));
+
+if(GOOGLE_KEY) document.getElementById('gKeyInput').value = GOOGLE_KEY;
+if(ANT_KEY)    document.getElementById('kInput').value    = ANT_KEY;
+
+// ── TYPEWRITER ──
+const TW_PHRASES = [
+  ' a quiet 2-bedroom near the beach…',
+  ' something modern with sea views…',
+  ' a furnished flat, walkable to cafés…',
+  ' a family home with a garden…',
+  ' a lock-up-and-go with a pool…',
+];
+let twIdx=0,twChar=0,twDeleting=false,twPause=0,twRunning=true;
+function typewriter(){
+  if(!twRunning) return;
+  const el=document.getElementById('twTyped');
+  const phrase=TW_PHRASES[twIdx];
+  if(twPause>0){twPause--;setTimeout(typewriter,60);return}
+  if(!twDeleting){
+    el.textContent=phrase.slice(0,++twChar);
+    if(twChar===phrase.length){twDeleting=true;twPause=28}
+    setTimeout(typewriter,68);
+  } else {
+    el.textContent=phrase.slice(0,--twChar);
+    if(twChar===0){twDeleting=false;twIdx=(twIdx+1)%TW_PHRASES.length;twPause=5}
+    setTimeout(typewriter,32);
+  }
+}
+function stopTypewriter(){
+  twRunning=false;
+  const c=document.getElementById('twCursor'),t=document.getElementById('twTyped');
+  if(c)c.style.display='none';if(t)t.style.display='none';
+}
+function onType(){ stopTypewriter(); }
+document.addEventListener('DOMContentLoaded',()=>setTimeout(typewriter,800));
+
+// ── CHIPS ──
+function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}
+
+function tap(el, text){
+  const ta = document.getElementById('qta');
+  if(activeChips.has(text)){
+    activeChips.delete(text);
+    ta.value = ta.value.replace(new RegExp('[,.]?\\s*'+escRe(text)+'\\s*[,.]?','gi'),' ').replace(/\s{2,}/g,' ').trim();
+    el.classList.remove('on');
+    el.innerHTML = el.innerHTML.replace(/ <span class="cx">✕<\/span>/g,'');
+  } else {
+    activeChips.add(text);
+    const cur = ta.value.trimEnd();
+    ta.value = cur + (cur ? ', ' : '') + text;
+    el.classList.add('on');
+    el.innerHTML += ' <span class="cx">✕</span>';
+  }
+  stopTypewriter();
+}
+
+function tapOne(el, group, siblings, text){
+  siblings.forEach(bid => {
+    const ex = document.querySelector(`[data-bid="${bid}"]`);
+    if(ex && ex !== el && ex.classList.contains('on')){
+      const ot = ex._tapText;
+      if(ot){ activeChips.delete(ot); document.getElementById('qta').value = document.getElementById('qta').value.replace(new RegExp('[,.]?\\s*'+escRe(ot)+'\\s*[,.]?','gi'),' ').replace(/\s{2,}/g,' ').trim(); }
+      ex.classList.remove('on');
+      ex.innerHTML = ex.innerHTML.replace(/ <span class="cx">✕<\/span>/g,'');
+    }
+  });
+  el._tapText = text;
+  tap(el, text);
+}
+
+function tapLoc(el, area){
+  const ta = document.getElementById('qta');
+  const locText = 'in ' + area;
+  // deactivate other area chips
+  document.querySelectorAll('.cp.on').forEach(c => {
+    if(c !== el){
+      const old = 'in ' + (c._locArea || '');
+      ta.value = ta.value.replace(new RegExp('[,.]?\\s*'+escRe(old)+'\\s*[,.]?','gi'),' ').replace(/\s{2,}/g,' ').trim();
+      c.classList.remove('on');
+      c.innerHTML = c.innerHTML.replace(/ <span class="cx">✕<\/span>/g,'');
+    }
+  });
+  const wasOn = el.classList.contains('on');
+  if(!wasOn){
+    el._locArea = area;
+    const cur = ta.value.trimEnd();
+    ta.value = cur + (cur ? ', ' : '') + locText;
+    el.classList.add('on');
+    el.innerHTML += ' <span class="cx">✕</span>';
+    // set location context
+    const found = DEMO_PLACES.find(p => p.main.toLowerCase() === area.toLowerCase());
+    if(found){
+      selectedPlace = {name:found.main, address:found.main+', '+found.sec, lat:found.lat, lng:found.lng, placeId:null, types:[]};
+      renderLocCtx(selectedPlace, found.icon);
+      renderDemoNearby(found.main);
+    }
+  } else {
+    ta.value = ta.value.replace(new RegExp('[,.]?\\s*'+escRe(locText)+'\\s*[,.]?','gi'),' ').replace(/\s{2,}/g,' ').trim();
+    el.classList.remove('on');
+    el.innerHTML = el.innerHTML.replace(/ <span class="cx">✕<\/span>/g,'');
+    selectedPlace = null;
+    off('locCtx');
+  }
+  stopTypewriter();
+}
+
+// ── GOOGLE PLACES INIT ──
+function saveGKey(){
+  GOOGLE_KEY = document.getElementById('gKeyInput').value.trim();
+  if(!GOOGLE_KEY) return;
+  localStorage.setItem('nestly_gk', GOOGLE_KEY);
+  loadGooglePlaces();
+}
+function saveKey(){
+  ANT_KEY = document.getElementById('kInput').value.trim();
+  if(!ANT_KEY) return;
+  localStorage.setItem('nestly_k', ANT_KEY);
+}
+function loadGooglePlaces(){
+  if(!GOOGLE_KEY || window.google) return;
+  window._gReady = onGoogleReady;
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_KEY}&libraries=places&callback=_gReady`;
+  s.async = true; s.defer = true;
+  document.head.appendChild(s);
+}
+function onGoogleReady(){
+  autocompleteService = new google.maps.places.AutocompleteService();
+  placesService = new google.maps.places.PlacesService(document.createElement('div'));
+  isLive = true;
+  document.getElementById('apiMode').textContent = 'Live ✓';
+  document.getElementById('apiMode').className = 'api-mode live';
+}
+if(GOOGLE_KEY) setTimeout(loadGooglePlaces, 100);
+
+// ── DEMO DATA ──
+const DEMO_PLACES = [
+  {main:'Sea Point',sec:'Cape Town, Western Cape',type:'suburb',icon:'🌊',lat:-33.9194,lng:18.3877},
+  {main:'Camps Bay',sec:'Cape Town, Western Cape',type:'suburb',icon:'🏖',lat:-33.9506,lng:18.3773},
+  {main:'Green Point',sec:'Cape Town, Western Cape',type:'suburb',icon:'🟢',lat:-33.9056,lng:18.4088},
+  {main:'Clifton',sec:'Cape Town, Western Cape',type:'suburb',icon:'🌅',lat:-33.9375,lng:18.3741},
+  {main:'De Waterkant',sec:'Cape Town, Western Cape',type:'suburb',icon:'🎨',lat:-33.9192,lng:18.4163},
+  {main:'Mouille Point',sec:'Cape Town, Western Cape',type:'suburb',icon:'⚓',lat:-33.9014,lng:18.4031},
+  {main:'Oranjezicht',sec:'Cape Town, Western Cape',type:'suburb',icon:'🍊',lat:-33.9334,lng:18.4168},
+  {main:'Fresnaye',sec:'Cape Town, Western Cape',type:'suburb',icon:'🌺',lat:-33.9211,lng:18.3873},
+  {main:'Bantry Bay',sec:'Cape Town, Western Cape',type:'suburb',icon:'🦅',lat:-33.9274,lng:18.3760},
+  {main:'Hout Bay',sec:'Cape Town, Western Cape',type:'suburb',icon:'🚢',lat:-34.0393,lng:18.3567},
+  {main:'Constantia',sec:'Cape Town, Western Cape',type:'suburb',icon:'🍷',lat:-34.0235,lng:18.4285},
+  {main:'Woodstock',sec:'Cape Town, Western Cape',type:'suburb',icon:'🏭',lat:-33.9327,lng:18.4420},
+  {main:'Observatory',sec:'Cape Town, Western Cape',type:'suburb',icon:'🔭',lat:-33.9408,lng:18.4693},
+  {main:'Claremont',sec:'Cape Town, Western Cape',type:'suburb',icon:'🏫',lat:-33.9862,lng:18.4653},
+  {main:'Bloubergstrand',sec:'Cape Town, Western Cape',type:'suburb',icon:'💨',lat:-33.8116,lng:18.4674},
+  {main:'City Bowl',sec:'Cape Town, Western Cape',type:'area',icon:'🏙',lat:-33.9258,lng:18.4232},
+];
+
+const DEMO_NEARBY = {
+  'Sea Point':[{ico:'🏖',cat:'nb-ico-park',name:'Sea Point Promenade',dist:'180m'},{ico:'☕',cat:'nb-ico-food',name:'Bootlegger Coffee',dist:'0.3km'},{ico:'🏋',cat:'nb-ico-shop',name:'Virgin Active',dist:'0.5km'},{ico:'🏥',cat:'nb-ico-shop',name:'Netcare Clinic',dist:'0.8km'}],
+  'Camps Bay':[{ico:'🏖',cat:'nb-ico-park',name:'Camps Bay Beach',dist:'50m'},{ico:'🍽',cat:'nb-ico-food',name:'The Kove',dist:'0.2km'},{ico:'🛒',cat:'nb-ico-shop',name:'Pick n Pay',dist:'0.4km'},{ico:'🚌',cat:'nb-ico-transit',name:'MyCiTi Bus Stop',dist:'0.6km'}],
+  'default':[{ico:'☕',cat:'nb-ico-food',name:'Local Café',dist:'0.3km'},{ico:'🛒',cat:'nb-ico-shop',name:'Supermarket',dist:'0.5km'},{ico:'🚌',cat:'nb-ico-transit',name:'Bus Stop',dist:'0.4km'},{ico:'🌳',cat:'nb-ico-park',name:'Park',dist:'0.7km'}],
+};
+
+function renderDemoNearby(area){
+  const nearby = DEMO_NEARBY[area] || DEMO_NEARBY['default'];
+  document.getElementById('nearbyGrid').innerHTML = nearby.map(n=>`
+    <div class="nb-card"><div class="nb-ico ${n.cat}">${n.ico}</div><div class="nb-txt"><strong>${n.name}</strong><span>${n.dist}</span></div></div>`).join('');
+}
+
+function distM(lat1,lng1,lat2,lng2){
+  const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function fetchNearby(lat, lng){
+  if(!placesService) return;
+  const TYPES=[{type:'cafe',ico:'☕',cat:'nb-ico-food'},{type:'school',ico:'🏫',cat:'nb-ico-school'},{type:'park',ico:'🌳',cat:'nb-ico-park'},{type:'supermarket',ico:'🛒',cat:'nb-ico-shop'},{type:'transit_station',ico:'🚌',cat:'nb-ico-transit'}];
+  const grid = document.getElementById('nearbyGrid');
+  grid.innerHTML = '';
+  TYPES.forEach(({type,ico,cat})=>{
+    placesService.nearbySearch({location:{lat,lng},radius:800,type},(results,status)=>{
+      if(status!=='OK'||!results?.length) return;
+      const r=results[0];
+      const dist=Math.round(distM(lat,lng,r.geometry.location.lat(),r.geometry.location.lng()));
+      const dl=dist<1000?dist+'m':(dist/1000).toFixed(1)+'km';
+      const el=document.createElement('div');
+      el.className='nb-card';
+      el.innerHTML=`<div class="nb-ico ${cat}">${ico}</div><div class="nb-txt"><strong>${r.name}</strong><span>${dl}</span></div>`;
+      grid.appendChild(el);
+    });
+  });
+}
+
+// ── RENDER LOCATION CONTEXT ──
+function renderLocCtx(place, icon){
+  document.getElementById('lcName').textContent = place.name;
+  document.getElementById('lcAddr').textContent = '📍 ' + place.address;
+  const typeLabel = place.types?.[0]?.replace(/_/g,' ') || 'Location';
+  document.getElementById('lcBadge').textContent = typeLabel.charAt(0).toUpperCase()+typeLabel.slice(1);
+  document.getElementById('lcMeta').innerHTML = `<span class="lc-tag">🔑 Rental market active</span>`;
+  const mapWrap = document.getElementById('mapWrap');
+  if(GOOGLE_KEY){
+    mapWrap.innerHTML = `<iframe src="https://www.google.com/maps/embed/v1/place?key=${GOOGLE_KEY}&q=${encodeURIComponent(place.address)}&zoom=14" allowfullscreen loading="lazy"></iframe>`;
+  } else {
+    mapWrap.innerHTML = `<div style="height:140px;background:#f0ece6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:10px"><div style="font-size:2rem">${icon||'📍'}</div><div style="font-size:13px;font-weight:500;color:var(--ri1)">${place.name}</div><div style="font-size:11px;color:var(--ri3)">Add Google API key for live map</div></div>`;
+  }
+  mapWrap.className = 'map-wrap on';
+  on('locCtx');
+}
+
+// ── RECENT SEARCHES ──
+function loadRecent(){
+  const s = JSON.parse(localStorage.getItem('nestly_recent')||'[]');
+  if(!s.length) return;
+  const row = document.getElementById('recentRow');
+  row.style.display = 'flex';
+  const lbl = document.createElement('span'); lbl.className='recent-label'; lbl.textContent='Recent:'; row.appendChild(lbl);
+  s.slice(0,3).forEach(q=>{
+    const el = document.createElement('span'); el.className='recent-chip';
+    el.innerHTML=`<span class="rci">🕐</span>${q.slice(0,40)}${q.length>40?'…':''}`;
+    el.onclick=()=>{document.getElementById('qta').value=q;stopTypewriter();};
+    row.appendChild(el);
+  });
+}
+function saveRecent(q){
+  const s=JSON.parse(localStorage.getItem('nestly_recent')||'[]').filter(x=>x!==q);
+  s.unshift(q); localStorage.setItem('nestly_recent',JSON.stringify(s.slice(0,5)));
+}
+
+// ── PHASES ──
+const PHASES = {
+  intent:[{icon:'🧠',text:'Reading your lifestyle description'},{icon:'🔍',text:'Extracting what you really want'},{icon:'✍️',text:'Refining your search brief'}],
+  search:[{icon:'🔎',text:'Scanning Property24 & Private Property'},{icon:'🏘',text:'Checking Pam Golding, Seeff & RE/MAX'},{icon:'⚖️',text:'Matching listings to your lifestyle'},{icon:'✍️',text:'Building match breakdowns'}]
+};
+let ptimer=null,pstep=0;
+function startPhase(set,title){
+  clearTimeout(ptimer); pstep=0;
+  document.getElementById('phTitle').textContent=title;
+  const ps=document.getElementById('psteps');
+  ps.innerHTML=PHASES[set].map(p=>`<div class="pstep"><span class="si">${p.icon}</span>${p.text}</div>`).join('');
+  on('phaseBox'); adv();
+}
+function adv(){
+  const steps=document.querySelectorAll('.pstep');
+  if(pstep>0&&steps[pstep-1]){steps[pstep-1].classList.add('done');steps[pstep-1].classList.remove('active')}
+  if(pstep<steps.length){steps[pstep].classList.add('active');pstep++;ptimer=setTimeout(adv,2600)}
+}
+function stopPhase(){clearTimeout(ptimer);off('phaseBox')}
+
+// ── PROMPTS ──
+const intentPrompt=(q,loc)=>`You are a senior Cape Town property expert.
+USER INPUT: "${q}"
+${loc?`LOCATION: ${loc.name}, ${loc.address}`:''}
+Extract: location, type/size, must-haves, lifestyle, environment, building, views, budget. Up to 4 missing criteria. Rewrite into improved first-person description under 120 words. One-sentence ranking guidance.
+JSON only: {"interpreted_tags":[{"label":"string","category":"location|lifestyle|must|vibe|budget"}],"missing":[{"icon":"💰","label":"string","detail":"string"}],"improved_prompt":"string","rank_guidance":"string"}`;
+
+const searchPrompt=(intent,q,loc)=>`You are a Cape Town rental expert with live web search.
+BRIEF: "${intent.improved_prompt}" | Ranking: "${intent.rank_guidance}"
+${loc?`TARGET LOCATION: ${loc.name} (${loc.address})`:''}
+
+Search for 5 live Cape Town rentals on property24.com/to-rent.
+
+CRITICAL URL RULE: The url field MUST be the direct individual listing page URL (e.g. https://www.property24.com/to-rent/sea-point/cape-town/western-cape/123456) — NOT a search results page. If you cannot find a direct listing URL, omit that result entirely.
+
+For each listing: title, location, price, beds, baths, size, furnished, pets, lease, amenities, url (direct listing page only), source.
+Try to extract image_url from the listing og:image. If not found return null.
+matched[] up to 3, not_matched[] up to 2. Score 0–100. One sentence match_reason. availability "now" or "rare".
+
+JSON only: {"sources_searched":["Property24"],"results":[{"title":"","location":"","price":"","beds":2,"baths":1,"size":"","furnished":true,"pets":false,"lease":"","amenities":[],"match_score":91,"matched":["Sea views"],"not_matched":["Gym"],"match_reason":"","url":"https://www.property24.com/to-rent/sea-point/cape-town/western-cape/123456","source":"Property24","image_url":null,"availability":"now"}]}`;
+
+// ── RUN ──
+async function run(){
+  const q = document.getElementById('qta').value.trim();
+  if(!q){ showErr('Please describe what you are looking for.'); return; }
+  if(!ANT_KEY){ showErr('Please enter your Anthropic API key to run the AI search.'); return; }
+  loading(true); resetR();
+  saveRecent(q);
+  startPhase('intent','Understanding your lifestyle…');
+  let intent;
+  try {
+    const r1 = await claude(intentPrompt(q, selectedPlace), false);
+    intent = JSON.parse(pJSON(r1));
+    stopPhase();
+  } catch(e){ stopPhase(); intent={improved_prompt:q,rank_guidance:'Match closely.',interpreted_tags:[],missing:[]}; }
+  startPhase('search','Searching live listings…');
+  try {
+    const r2 = await claude(searchPrompt(intent,q,selectedPlace), true);
+    stopPhase(); renderResults(JSON.parse(pJSON(r2)));
+  } catch(e){ stopPhase(); showErr('Search failed: '+(e.message||'Check your API key.')); }
+  finally { loading(false); }
+}
+
+async function claude(prompt, webSearch){
+  const model = webSearch ? 'claude-sonnet-4-20250514' : 'claude-haiku-4-5-20251001';
+  const body={model,max_tokens: webSearch ? 2000 : 1000,messages:[{role:'user',content:prompt}]};
+  if(webSearch) body.tools=[{type:'web_search_20250305',name:'web_search'}];
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ANT_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||`API ${res.status}`)}
+  const data=await res.json();
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+  if(!text) throw new Error('No response.');
+  return text;
+}
+function pJSON(raw){const s=raw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();const a=s.indexOf('{'),b=s.lastIndexOf('}');if(a===-1||b===-1)throw new Error('Parse error');return s.slice(a,b+1)}
+
+const SUBURB_IMGS = {
+  'sea point':'photo-1580060839134-75a5edca2e99',
+  'camps bay':'photo-1596394516093-501ba68a0ba6',
+  'clifton':'photo-1564013799919-ab600027ffc6',
+  'green point':'photo-1512917774080-9991f1c4c750',
+  'bantry bay':'photo-1613977257363-707ba9348227',
+  'mouille point':'photo-1580587771525-78b9dba3b914',
+  'de waterkant':'photo-1493809842364-78817add7ffb',
+  'oranjezicht':'photo-1568605114967-8130f3a36994',
+  'fresnaye':'photo-1600585154340-be6161a56a0c',
+  'hout bay':'photo-1583847268964-b28dc8f51f92',
+  'constantia':'photo-1571939228382-b2f2b585ce15',
+  'woodstock':'photo-1558618666-fcd25c85cd64',
+  'observatory':'photo-1600566753190-17f0baa2a6c3',
+  'claremont':'photo-1600047509807-ba8f99d2cdde',
+  'bloubergstrand':'photo-1580587771525-78b9dba3b914',
+  'city bowl':'photo-1580060839134-75a5edca2e99',
+  'default':'photo-1580060839134-75a5edca2e99',
+};
+function fallbackImg(location){
+  const key = Object.keys(SUBURB_IMGS).find(k => (location||'').toLowerCase().includes(k)) || 'default';
+  return `https://images.unsplash.com/${SUBURB_IMGS[key]}?w=600&q=70&auto=format`;
+}
+function renderResults(data){
+  off('empty');
+  const results=(data.results||[]).slice().sort((a,b)=>(b.match_score||0)-(a.match_score||0));
+  const g=document.getElementById('rGrid');
+  if(!results.length){on('empty');return}
+  on('rh'); document.getElementById('rCount').textContent=results.length;
+  results.forEach((r,i)=>{
+    const sc=r.match_score>=80?'mshi':r.match_score>=60?'msmi':'mslo';
+    const imgSrc = r.image_url || fallbackImg(r.location);
+    const imgH = `<img src="${imgSrc}" alt="" loading="lazy" onerror="this.src='${fallbackImg(r.location)}'">`;
+    const avail=r.availability==='rare'?`<div class="avail-badge av-rare">✦ Rare find</div>`:`<div class="avail-badge av-now">● Available now</div>`;
+    const pills=[r.furnished===true?'<span class="pill pb">🛋 Furnished</span>':'',r.furnished===false?'<span class="pill pb">📦 Unfurnished</span>':'',r.lease?`<span class="pill pb">📋 ${r.lease}</span>`:'',r.pets===true?'<span class="pill py">🐾 Pets OK</span>':'',r.pets===false?'<span class="pill pn">🚫 No pets</span>':'',r.source?`<span class="pill ps">via ${r.source}</span>`:''].filter(Boolean).join('');
+    const ams=r.amenities||[];
+    const tags=ams.slice(0,4).map(a=>`<span class="ctag">${a}</span>`).join('')+(ams.length>4?`<span class="ctag">+${ams.length-4}</span>`:'');
+    const yesItems=(r.matched||[]).map(m=>`<div class="ml-item ml-yes"><span class="ml-icon">✓</span>${m}</div>`).join('');
+    const noItems=(r.not_matched||[]).map(m=>`<div class="ml-item ml-no"><span class="ml-icon">✗</span>${m}</div>`).join('');
+    const cardId='card_'+i; const isSaved=saved.has(r.url||cardId);
+    const d=document.createElement('div'); d.className='card'; d.style.animationDelay=(i*70)+'ms';
+    d.innerHTML=`<div class="cimg-wrap" style="${r.url?'cursor:pointer':''}" onclick="${r.url?`window.open('${r.url.replace(/'/g,"\\'")}','_blank')`:''}">
+      ${imgH}<div class="crank-badge">${i+1}</div>
+      <button class="save-btn${isSaved?' saved':''}" onclick="event.stopPropagation();toggleSave(${i},'${(r.url||cardId).replace(/'/g,"\\'")}',this)">${isSaved?'❤️':'🤍'}</button>
+      ${avail}
+    </div>
+    <div class="cbody"><div class="ctop"><div class="ctitle">${r.url?`<a href="${r.url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${r.title||'Rental'}</a>`:r.title||'Rental'}</div><div class="cprice">${r.price||'POA'}</div></div>
+    <div class="cloc">📍 ${r.location||''}</div>
+    <div class="cstats">${r.beds?`<span class="cstat">🛏 ${r.beds} bed${r.beds>1?'s':''}</span>`:''}${r.baths?`<span class="cstat">🚿 ${r.baths} bath${r.baths>1?'s':''}</span>`:''}${r.size?`<span class="cstat">📐 ${r.size}</span>`:''}</div>
+    <div class="cpills">${pills}</div>${tags?`<div class="ctags">${tags}</div>`:''}
+    <div class="match-section"><div class="match-top"><div class="mscore ${sc}">${r.match_score||'?'}%</div><div class="mreason">${r.match_reason||''}</div></div>
+    ${yesItems||noItems?`<div class="match-lists"><div><div class="ml-hdr ml-hdr-yes">✓ Matched</div>${yesItems||'<div class="ml-item ml-yes"><span class="ml-icon">✓</span>See listing</div>'}</div><div><div class="ml-hdr ml-hdr-no">✗ Not confirmed</div>${noItems||'<div style="font-size:11.5px;color:var(--ri3);padding:4px 0">Nothing flagged</div>'}</div></div>`:''}
+    ${r.url?`<a class="clink" href="${r.url}" target="_blank" rel="noopener">View full listing on ${r.source||'Property24'} →</a>`:''}</div></div>`;
+    g.appendChild(d);
+  });
+}
+
+function toggleSave(i,id,btn){
+  if(saved.has(id)){saved.delete(id);btn.innerHTML='🤍';btn.classList.remove('saved')}
+  else{saved.add(id);btn.innerHTML='❤️';btn.classList.add('saved')}
+  localStorage.setItem('nestly_saved',JSON.stringify([...saved]));
+  btn.style.transform='scale(1.25)';setTimeout(()=>btn.style.transform='',200);
+}
+
+// ── UTILS ──
+function loading(b){const btn=document.getElementById('sBtn');btn.classList.toggle('loading',b);btn.disabled=b;document.querySelectorAll('.sk').forEach(s=>s.classList.toggle('on',b));}
+function resetR(){document.getElementById('rGrid').innerHTML='';['rh','banner','errbox','empty'].forEach(off);}
+function on(id){document.getElementById(id)?.classList.add('on')}
+function off(id){document.getElementById(id)?.classList.remove('on')}
+function showErr(m){const e=document.getElementById('errbox');e.textContent=m;on('errbox')}
+
+document.getElementById('qta').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))run();});
+loadRecent(); on('empty');
+
+// ── HEX CANVAS ──
+(function(){
+  const canvas=document.getElementById('hexCanvas');
+  const ctx=canvas.getContext('2d');
+  let W,H,raf,hexes=[],particles=[],scanY=0;
+  const G='rgba(212,168,67,',B='rgba(100,200,255,',T='rgba(180,255,220,';
+  const NODES=[{xp:.48,yp:.25,col:B,r:3.5,speed:1100},{xp:.50,yp:.42,col:G,r:4,speed:900},{xp:.22,yp:.50,col:G,r:3,speed:1300},{xp:.62,yp:.38,col:B,r:2.5,speed:1500},{xp:.30,yp:.60,col:T,r:2.5,speed:1200},{xp:.70,yp:.55,col:G,r:2,speed:1700},{xp:.40,yp:.68,col:B,r:2,speed:1000}];
+  const STREAMS=[[0,1],[1,2],[1,3],[2,4],[3,5],[4,6],[1,6]];
+  const streamPos=STREAMS.map(()=>Math.random());
+  const streamSpeed=STREAMS.map(()=>0.002+Math.random()*0.003);
+  let glitchHexes=[],glitchTimer=0;
+  function resize(){W=canvas.offsetWidth;H=canvas.offsetHeight;canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;ctx.scale(devicePixelRatio,devicePixelRatio);buildHexes();}
+  function buildHexes(){hexes=[];const size=Math.min(W,H)*0.052,hw=size*2,hh=Math.sqrt(3)*size,cols=Math.ceil(W/(hw*0.75))+2,rows=Math.ceil(H/hh)+2;for(let row=-1;row<rows;row++)for(let col=-1;col<cols;col++){const x=col*hw*0.75,y=row*hh+(col%2===0?0:hh/2),dx=x/W-0.48,dy=y/H-0.4,dist=Math.sqrt(dx*dx+dy*dy*1.4),base=Math.max(0,0.22-dist*0.32);hexes.push({x,y,size,base,phase:Math.random()*Math.PI*2,speed:0.006+Math.random()*0.01,timer:Math.random()*200,tier:dist<0.12?2:dist<0.25?1:0,glowing:false,glowAlpha:0})}particles=Array.from({length:80},()=>spawnParticle(true));}
+  function spawnParticle(ry){return{x:Math.random()*(W||800),y:ry?Math.random()*(H||600):(H||600)+5,vx:(Math.random()-.5)*0.4,vy:-Math.random()*0.6-0.15,r:Math.random()*1.5+0.3,a:Math.random()*0.7+0.2,life:ry?Math.random():0,col:Math.random()<0.7?G:B};}
+  function hexPath(x,y,r){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-30);i===0?ctx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a)):ctx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a))}ctx.closePath();}
+  function drawHexGrid(){glitchTimer++;if(glitchTimer>90+Math.random()*60){glitchTimer=0;const cnt=3+Math.floor(Math.random()*6);glitchHexes=[];const cands=hexes.filter(h=>h.tier>0);for(let i=0;i<cnt;i++){const h=cands[Math.floor(Math.random()*cands.length)];if(h){h.glowing=true;h.glowAlpha=1;glitchHexes.push(h)}}}glitchHexes.forEach(h=>{h.glowAlpha=Math.max(0,h.glowAlpha-0.025);if(h.glowAlpha<=0)h.glowing=false});hexes.forEach(h=>{h.timer++;const pulse=Math.sin(h.phase+h.timer*h.speed)*0.5+0.5;let alpha=h.base*(0.5+pulse*0.5);const sd=Math.abs(h.y-scanY);alpha+=sd<h.size*2?(1-sd/(h.size*2))*0.35:0;if(h.glowing)alpha=Math.max(alpha,h.glowAlpha*0.8);if(alpha<0.01)return;hexPath(h.x,h.y,h.size-1.2);ctx.strokeStyle=G+alpha+')';ctx.lineWidth=h.tier===2?1.0:h.tier===1?0.7:0.45;ctx.stroke();if(h.tier===2||h.glowing){const fa=h.glowing?h.glowAlpha*0.18:alpha*0.07*pulse;ctx.fillStyle=h.glowing?B+fa+')':G+fa+')';ctx.fill()}if(h.tier===2&&pulse>0.8){ctx.beginPath();ctx.arc(h.x,h.y,1.2,0,Math.PI*2);ctx.fillStyle=G+(alpha*0.9)+')';ctx.fill()}});}
+  function drawNodes(){NODES.forEach((n,i)=>{const nx=n.xp*W,ny=n.yp*H,p1=(Math.sin(Date.now()/n.speed+i)+1)/2,p2=(Math.sin(Date.now()/(n.speed*0.6)+i+2)+1)/2;const g1=ctx.createRadialGradient(nx,ny,0,nx,ny,28);g1.addColorStop(0,n.col+'0.18)');g1.addColorStop(1,n.col+'0)');ctx.fillStyle=g1;ctx.beginPath();ctx.arc(nx,ny,28,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(nx,ny,6+p1*18,0,Math.PI*2);ctx.strokeStyle=n.col+(0.5*(1-p1))+')';ctx.lineWidth=1;ctx.stroke();ctx.beginPath();ctx.arc(nx,ny,4+p2*12,0,Math.PI*2);ctx.strokeStyle=n.col+(0.35*(1-p2))+')';ctx.lineWidth=0.7;ctx.stroke();ctx.beginPath();ctx.arc(nx,ny,n.r+3,0,Math.PI*2);ctx.strokeStyle=n.col+'0.6)';ctx.lineWidth=0.8;ctx.stroke();ctx.beginPath();ctx.arc(nx,ny,n.r,0,Math.PI*2);ctx.fillStyle=n.col+'1)';ctx.fill();const chLen=12,chGap=n.r+2;ctx.strokeStyle=n.col+'0.45)';ctx.lineWidth=0.7;[[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dy])=>{ctx.beginPath();ctx.moveTo(nx+dx*chGap,ny+dy*chGap);ctx.lineTo(nx+dx*(chGap+chLen),ny+dy*(chGap+chLen));ctx.stroke()});for(let k=0;k<6;k++){const a=(k/6)*Math.PI*2,ir=n.r+3,or=n.r+6;ctx.beginPath();ctx.moveTo(nx+Math.cos(a)*ir,ny+Math.sin(a)*ir);ctx.lineTo(nx+Math.cos(a)*or,ny+Math.sin(a)*or);ctx.strokeStyle=n.col+'0.55)';ctx.lineWidth=0.8;ctx.stroke()}});}
+  function drawStreams(){STREAMS.forEach(([ai,bi],si)=>{streamPos[si]=(streamPos[si]+streamSpeed[si])%1;const a=NODES[ai],b=NODES[bi],ax=a.xp*W,ay=a.yp*H,bx=b.xp*W,by=b.yp*H;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.strokeStyle=G+'0.07)';ctx.lineWidth=0.5;ctx.setLineDash([4,8]);ctx.stroke();ctx.setLineDash([]);const pos=streamPos[si],tx=ax+(bx-ax)*pos,ty=ay+(by-ay)*pos;for(let k=1;k<=8;k++){const tp=Math.max(0,pos-k*0.012),trx=ax+(bx-ax)*tp,try_=ay+(by-ay)*tp;ctx.beginPath();ctx.arc(trx,try_,1.5*(1-k/10),0,Math.PI*2);ctx.fillStyle=a.col+(0.5*(1-k/8))+')';ctx.fill()}const hg=ctx.createRadialGradient(tx,ty,0,tx,ty,6);hg.addColorStop(0,a.col+'0.9)');hg.addColorStop(1,a.col+'0)');ctx.fillStyle=hg;ctx.beginPath();ctx.arc(tx,ty,6,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(tx,ty,2,0,Math.PI*2);ctx.fillStyle=a.col+'1)';ctx.fill();});}
+  function drawParticles(){particles.forEach((p,i)=>{p.x+=p.vx;p.y+=p.vy;p.life+=0.004;if(p.life>1){particles[i]=spawnParticle(false);return}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle=p.col+(p.a*Math.sin(p.life*Math.PI)*0.5)+')';ctx.fill();});}
+  function drawScan(){scanY+=0.6;if(scanY>H+100)scanY=-100;const sg=ctx.createLinearGradient(0,scanY-40,0,scanY+40);sg.addColorStop(0,'transparent');sg.addColorStop(0.45,G+'0.04)');sg.addColorStop(0.5,G+'0.09)');sg.addColorStop(0.55,G+'0.04)');sg.addColorStop(1,'transparent');ctx.fillStyle=sg;ctx.fillRect(0,scanY-40,W,80);ctx.beginPath();ctx.moveTo(0,scanY);ctx.lineTo(W,scanY);ctx.strokeStyle=G+'0.18)';ctx.lineWidth=0.7;ctx.stroke();}
+  function drawCornerHUD(){const cx=W-20,cy=20;ctx.strokeStyle=G+'0.2)';ctx.lineWidth=0.7;ctx.beginPath();ctx.moveTo(cx-30,cy);ctx.lineTo(cx,cy);ctx.lineTo(cx,cy+30);ctx.stroke();const bw=24+Math.sin(Date.now()/800)*10;ctx.fillStyle=G+'0.3)';ctx.fillRect(cx-bw,cy+5,bw-2,1.5);ctx.fillRect(cx-bw*0.6,cy+9,bw*0.6-2,1.5);ctx.fillRect(cx-bw*0.85,cy+13,bw*0.85-2,1.5);const bx=20,by=H-20;ctx.beginPath();ctx.moveTo(bx+30,by);ctx.lineTo(bx,by);ctx.lineTo(bx,by-30);ctx.stroke();const bw2=20+Math.cos(Date.now()/1100)*8;ctx.fillRect(bx+2,by-5,bw2,1.5);ctx.fillRect(bx+2,by-9,bw2*0.7,1.5);ctx.fillRect(bx+2,by-13,bw2*0.5,1.5);}
+  function frame(){ctx.clearRect(0,0,W,H);drawHexGrid();drawStreams();drawNodes();drawParticles();drawScan();drawCornerHUD();raf=requestAnimationFrame(frame);}
+  function init(){resize();raf=requestAnimationFrame(frame)}
+  window.addEventListener('resize',()=>{cancelAnimationFrame(raf);resize();raf=requestAnimationFrame(frame)});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
+  else setTimeout(init,50);
+})();
+</script>
+</body>
+</html>
