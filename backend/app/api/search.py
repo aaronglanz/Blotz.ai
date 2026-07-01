@@ -148,47 +148,61 @@ async def _run_search_background(search_id: uuid.UUID, query_text: str, location
             candidates = await _fetch_candidate_listings(db, intent, location)
             logger.info(f"Search {search_id}: {len(candidates)} candidates from cache (location={location})")
 
-            # Stage 3: Score with Haiku if we have an API key and candidates
+            # Stage 3: Rank candidates with transparent Python scoring
             results = []
-            if candidates and settings.ANTHROPIC_API_KEY:
-                from app.services.search_matcher import score_listings
-                try:
-                    results = await score_listings(
-                        api_key=settings.ANTHROPIC_API_KEY,
-                        query=intent.get("improved_prompt", query_text),
-                        listings=candidates,
-                        max_results=10,
-                    )
-                    logger.info(f"Search {search_id}: Haiku scored {len(results)} results")
-                except Exception:
-                    logger.exception(f"Search {search_id}: Haiku scoring failed, returning candidates directly")
 
-            # Fallback: if Haiku returned nothing, return top candidates from DB
+            if candidates:
+                from app.services.ranking import build_user_preferences, rank_listings
+
+                user_preferences = build_user_preferences(
+                    query_text=query_text,
+                    intent=intent,
+                    location=location,
+                )
+
+                search.interpreted_intent = {
+                    **(search.interpreted_intent or {}),
+                    "intent": intent,
+                    "user_preferences": user_preferences,
+                }
+                await db.commit()
+
+                try:
+                    results = rank_listings(
+                    listings=candidates,
+                    user_preferences=user_preferences,
+                    max_results=10,
+                )
+                    logger.info(f"Search {search_id}: Python ranking returned {len(results)} results")
+                except Exception:
+                    logger.exception(f"Search {search_id}: Python ranking failed, returning candidates directly")
+
+# Fallback: if ranking returned nothing, return top candidates from DB
             if not results and candidates:
                 logger.info(f"Search {search_id}: Using direct DB results as fallback")
                 results = [
                     {
-                        "title": c["title"],
-                        "location": c["location"],
-                        "price": c["price_display"],
-                        "beds": c.get("bedrooms"),
-                        "baths": c.get("bathrooms"),
-                        "size": f"{c['size_sqm']} m²" if c.get("size_sqm") else None,
-                        "furnished": c.get("furnished"),
-                        "pets": c.get("pets_allowed"),
-                        "lease": None,
-                        "amenities": c.get("amenities", []),
-                        "match_score": 50,
-                        "matched": [],
-                        "not_matched": [],
-                        "match_reason": "Matched by location and filters",
-                        "url": c["source_url"],
-                        "source": c["source"],
-                        "image_url": c.get("image_url"),
-                        "availability": c.get("available_from", "now"),
+            "title": c["title"],
+            "location": c["location"],
+            "price": c["price_display"],
+            "beds": c.get("bedrooms"),
+            "baths": c.get("bathrooms"),
+            "size": f"{c['size_sqm']} m²" if c.get("size_sqm") else None,
+            "furnished": c.get("furnished"),
+            "pets": c.get("pets_allowed"),
+            "lease": None,
+            "amenities": c.get("amenities", []),
+            "match_score": 50,
+            "matched": [],
+            "not_matched": [],
+            "match_reason": "Matched by location and basic filters",
+            "url": c["source_url"],
+            "source": c["source"],
+            "image_url": c.get("image_url"),
+            "availability": c.get("available_from", "now"),
                     }
                     for c in candidates[:10]
-                ]
+    ]
 
             results.sort(key=lambda r: r.get("match_score", 0), reverse=True)
 
