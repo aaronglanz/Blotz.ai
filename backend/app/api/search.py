@@ -22,6 +22,7 @@ async def _fetch_candidate_listings(
     db: AsyncSession,
     intent: dict,
     location: dict | None = None,
+    query_text: str | None = None,
     limit: int = 80,
 ) -> list[dict]:
     """Pre-filter cached listings based on structured criteria from the intent.
@@ -34,12 +35,53 @@ async def _fetch_candidate_listings(
     tags = intent.get("interpreted_tags", [])
     tag_labels = [t.get("label", "").lower() for t in tags]
 
+    KNOWN_CAPE_TOWN_SUBURBS = [
+        "Sea Point",
+        "Green Point",
+        "Mouille Point",
+        "Camps Bay",
+        "Clifton",
+        "Bantry Bay",
+        "Fresnaye",
+        "Gardens",
+        "Tamboerskloof",
+        "Vredehoek",
+        "Oranjezicht",
+        "Observatory",
+        "Woodstock",
+        "Claremont",
+        "Rondebosch",
+        "Newlands",
+        "Waterfront",
+        "De Waterkant",
+        "City Bowl",
+    ]
+
+    query_for_location = " ".join(
+        [
+            query_text or "",
+            intent.get("improved_prompt", "") or "",
+            " ".join(tag_labels),
+        ]
+    ).lower()
+
+    detected_suburb = None
+    for suburb in KNOWN_CAPE_TOWN_SUBURBS:
+        if suburb.lower() in query_for_location:
+            detected_suburb = suburb
+            break
+
     # Location filter — prioritize the explicit location from the frontend,
-    # then fall back to any location tag from intent interpretation
+    # then deterministic suburb extraction from the text,
+    # then fall back to any location tag from intent interpretation.
     location_applied = False
 
     if location and location.get("name"):
         query = query.where(CachedListing.suburb.ilike(f"%{location['name']}%"))
+        location_applied = True
+
+    if not location_applied and detected_suburb:
+        query = query.where(CachedListing.suburb.ilike(f"%{detected_suburb}%"))
         location_applied = True
 
     if not location_applied:
@@ -48,6 +90,7 @@ async def _fetch_candidate_listings(
                 suburb = tag.get("label", "")
                 if suburb:
                     query = query.where(CachedListing.suburb.ilike(f"%{suburb}%"))
+                    location_applied = True
                     break
 
     # Budget filter — extract price range from budget tags
@@ -55,7 +98,6 @@ async def _fetch_candidate_listings(
         if tag.get("category") == "budget":
             label = tag.get("label", "")
 
-            # Example: "R10,000 - R20,000/month" -> [10000, 20000]
             amounts = [
                 int(m.replace(" ", "").replace(",", ""))
                 for m in re.findall(r"(\d[\d\s,]+)", label)
@@ -173,7 +215,12 @@ async def _run_search_background(
             search.status = "searching"
             await db.commit()
 
-            candidates = await _fetch_candidate_listings(db, intent, location)
+            candidates = await _fetch_candidate_listings(
+    db=db,
+    intent=intent,
+    location=location,
+    query_text=query_text,
+)
 
             logger.info(
                 f"Search {search_id}: {len(candidates)} candidates from cache "

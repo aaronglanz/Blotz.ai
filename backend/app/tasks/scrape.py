@@ -81,37 +81,60 @@ def _upsert_listings(db: Session, scraped: list) -> tuple[int, int]:
 
 
 @celery_app.task(bind=True, name="scrape.run_property24")
-def run_property24_scrape(self, max_pages: int = 5):
-    """Scrape Property24 Cape Town rentals and cache in DB."""
-    logger.info("Starting Property24 scrape task")
+def run_property24_scrape(
+    self,
+    max_pages: int = 3,
+    target_suburbs: list[str] | None = None,
+):
+    """Scrape targeted Property24 Cape Town residential rentals and cache in DB."""
+    logger.info(
+        f"Starting targeted Property24 scrape task "
+        f"(max_pages={max_pages}, target_suburbs={target_suburbs})"
+    )
+
     db = _SessionLocal()
 
     try:
-        scraped = run_full_scrape(max_pages=max_pages)
+        scraped = run_full_scrape(
+            max_pages=max_pages,
+            target_suburbs=target_suburbs,
+        )
+
         inserted, updated = _upsert_listings(db, scraped)
 
-        # Mark listings not seen in this scrape as potentially inactive
-        # (only if they haven't been seen in 3+ days — they might just be on a different page)
+        # Mark listings not seen recently as potentially inactive.
+        # This is intentionally conservative because targeted suburb scraping
+        # may not cover every suburb on every run.
         db.execute(
             text("""
                 UPDATE cached_listings
                 SET is_active = false
                 WHERE source = 'Property24'
-                  AND last_seen_at < NOW() - INTERVAL '3 days'
+                  AND last_seen_at < NOW() - INTERVAL '7 days'
                   AND is_active = true
             """)
         )
         db.commit()
 
-        logger.info(f"Property24 scrape complete: {inserted} new, {updated} updated, {len(scraped)} total")
-        return {"inserted": inserted, "updated": updated, "total": len(scraped)}
+        logger.info(
+            f"Targeted Property24 scrape complete: "
+            f"{inserted} new, {updated} updated, {len(scraped)} total"
+        )
+
+        return {
+            "inserted": inserted,
+            "updated": updated,
+            "total": len(scraped),
+            "target_suburbs": target_suburbs,
+            "max_pages": max_pages,
+        }
 
     except Exception:
-        logger.exception("Property24 scrape failed")
+        logger.exception("Targeted Property24 scrape failed")
         raise
+
     finally:
         db.close()
-
 
 @celery_app.task(bind=True, name="scrape.enrich_listings")
 def enrich_listings(self, batch_size: int = 50, delay: float = 3.0):

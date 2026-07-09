@@ -1,7 +1,11 @@
-"""Property24 scraper for Cape Town rental listings.
+"""Property24 scraper for targeted Cape Town residential rental listings.
 
-Fetches listing data from Property24 search results pages and individual
-listing pages, returning normalized dicts ready for upsert into cached_listings.
+Fetches listing data from selected Property24 suburb search result pages and
+individual listing pages, returning normalized listings ready for upsert into
+cached_listings.
+
+The goal is not to scrape all of Cape Town. For the MVP, we only want useful
+residential listings in target suburbs.
 """
 
 import logging
@@ -15,7 +19,60 @@ from bs4 import BeautifulSoup, Tag
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.property24.com"
-SEARCH_URL = f"{BASE_URL}/to-rent/cape-town/western-cape/432"
+
+# Edit this list as your MVP focus changes.
+# These slugs are based on the Property24 URL format:
+# /to-rent/{suburb-slug}/cape-town/western-cape/{area-id}
+#
+# If one URL returns 404 or zero listings, go to Property24 in the browser,
+# search the suburb manually, and copy the final URL into this dict.
+TARGET_SUBURB_URLS: dict[str, str] = {
+    "Sea Point": f"{BASE_URL}/to-rent/sea-point/cape-town/western-cape/11021",
+    "Green Point": f"{BASE_URL}/to-rent/green-point/cape-town/western-cape/11017",
+    "Mouille Point": f"{BASE_URL}/to-rent/mouille-point/cape-town/western-cape/11019",
+    "Gardens": f"{BASE_URL}/to-rent/gardens/cape-town/western-cape/10164",
+    "Vredehoek": f"{BASE_URL}/to-rent/vredehoek/cape-town/western-cape/10169",
+    "Tamboerskloof": f"{BASE_URL}/to-rent/tamboerskloof/cape-town/western-cape/10167",
+    "Claremont": f"{BASE_URL}/to-rent/claremont/cape-town/western-cape/9976",
+    "Rondebosch": f"{BASE_URL}/to-rent/rondebosch/cape-town/western-cape/10163",
+    "Newlands": f"{BASE_URL}/to-rent/newlands/cape-town/western-cape/10013",
+    "Observatory": f"{BASE_URL}/to-rent/observatory/cape-town/western-cape/10157",
+    "Woodstock": f"{BASE_URL}/to-rent/woodstock/cape-town/western-cape/10172",
+}
+
+# Only keep normal residential rentals.
+# Exclude commercial, retail, industrial, farms, offices, vacant land, etc.
+RESIDENTIAL_PROPERTY_TYPES = {
+    "apartment",
+    "flat",
+    "house",
+    "townhouse",
+    "penthouse",
+    "cottage",
+    "studio",
+    "duplex",
+    "loft",
+    "garden cottage",
+    "room",
+}
+
+NON_RESIDENTIAL_KEYWORDS = {
+    "commercial",
+    "office",
+    "retail",
+    "industrial",
+    "warehouse",
+    "factory",
+    "shop",
+    "showroom",
+    "business",
+    "farm",
+    "smallholding",
+    "vacant land",
+    "land",
+    "plot",
+    "storage",
+}
 
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -51,7 +108,7 @@ class ScrapedListing:
 
 
 def _parse_price(text: str) -> tuple[int | None, str]:
-    """Extract numeric price (in rands) and display string from price text."""
+    """Extract numeric price in rands and display string from price text."""
     display = text.strip()
     match = re.search(r"R\s*([\d\s,]+)", display)
     if match:
@@ -71,90 +128,130 @@ def _parse_int(text: str | None) -> int | None:
 
 
 def _extract_listing_id(url: str) -> str | None:
-    """Extract the Property24 listing ID from a URL like /to-rent/.../12345678"""
+    """Extract the Property24 listing ID from a URL like /to-rent/.../12345678."""
     match = re.search(r"/(\d{6,})", url)
     return match.group(1) if match else None
 
 
-def _get_client() -> httpx.Client:
+def _get_client(referer: str | None = None) -> httpx.Client:
     import random
+
+    headers = {
+        **HEADERS,
+        "User-Agent": random.choice(USER_AGENTS),
+    }
+
+    if referer:
+        headers["Referer"] = referer
+
     return httpx.Client(
         timeout=30,
         follow_redirects=True,
-        headers={**HEADERS, "User-Agent": random.choice(USER_AGENTS)},
+        headers=headers,
     )
 
 
-def _get_session() -> httpx.Client:
-    """Create a persistent session that mimics a real browser.
+def _get_session(referer: str | None = None) -> httpx.Client:
+    """Create a persistent session that mimics a browser.
 
-    Visits the search page first to collect cookies before hitting detail pages.
+    Visits a search page first to collect cookies before hitting detail pages.
     """
     import random
+
+    warmup_url = referer or next(iter(TARGET_SUBURB_URLS.values()))
+
     client = httpx.Client(
         timeout=30,
         follow_redirects=True,
         headers={
             **HEADERS,
             "User-Agent": random.choice(USER_AGENTS),
-            "Referer": SEARCH_URL,
+            "Referer": warmup_url,
             "Sec-Fetch-Dest": "document",
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "same-origin",
         },
     )
-    # Warm up with a search page visit to get cookies
+
     try:
-        client.get(SEARCH_URL)
+        client.get(warmup_url)
     except Exception:
         pass
+
     return client
 
 
-def scrape_search_page(page: int = 1) -> list[ScrapedListing]:
-    """Scrape a single page of Property24 Cape Town rental search results."""
-    url = SEARCH_URL if page == 1 else f"{SEARCH_URL}/p{page}"
-    logger.info(f"Scraping Property24 search page {page}: {url}")
+def _is_residential_listing(listing: ScrapedListing) -> bool:
+    """Return True only for residential rental listings."""
+    title = (listing.title or "").lower()
+    ptype = (listing.property_type or "").lower()
 
-    with _get_client() as client:
+    combined = f"{title} {ptype}"
+
+    if any(keyword in combined for keyword in NON_RESIDENTIAL_KEYWORDS):
+        return False
+
+    # If we confidently parsed a residential property type, keep it.
+    if ptype in RESIDENTIAL_PROPERTY_TYPES:
+        return True
+
+    # If no type was parsed, infer from residential title words.
+    if any(keyword in title for keyword in RESIDENTIAL_PROPERTY_TYPES):
+        return True
+
+    return False
+
+
+def scrape_search_page(
+    page: int = 1,
+    search_url: str | None = None,
+    expected_suburb: str | None = None,
+) -> list[ScrapedListing]:
+    """Scrape a single Property24 rental search result page."""
+    base_search_url = search_url or next(iter(TARGET_SUBURB_URLS.values()))
+    url = base_search_url if page == 1 else f"{base_search_url}/p{page}"
+
+    logger.info(
+        f"Scraping Property24 page {page}"
+        f"{f' for {expected_suburb}' if expected_suburb else ''}: {url}"
+    )
+
+    with _get_client(referer=base_search_url) as client:
         resp = client.get(url)
         resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
     listings: list[ScrapedListing] = []
 
-    # Property24 uses .js_resultTile (underscore) for listing cards
     tiles = soup.select(".js_resultTile")
 
     for tile in tiles:
         try:
-            listing = _parse_tile(tile)
-            if listing:
-                listings.append(listing)
+            listing = _parse_tile(tile, expected_suburb=expected_suburb)
+            if not listing:
+                continue
+
+            if not _is_residential_listing(listing):
+                logger.debug(f"Skipping non-residential listing: {listing.title}")
+                continue
+
+            listings.append(listing)
+
         except Exception:
             logger.debug("Failed to parse tile", exc_info=True)
             continue
 
-    logger.info(f"Page {page}: found {len(listings)} listings")
+    logger.info(
+        f"Page {page}"
+        f"{f' for {expected_suburb}' if expected_suburb else ''}: "
+        f"found {len(listings)} residential listings"
+    )
+
     return listings
 
 
-def _parse_tile(tile: Tag) -> ScrapedListing | None:
-    """Parse a single listing tile from search results.
-
-    Tile structure (as of April 2026):
-      .js_resultTile
-        .p24_proTile (.js_resultTileClickable)
-          a[href*='/to-rent/']  — listing link with ID
-          img.js_P24_listingImage — main image
-          .p24_content
-            .p24_price — "R 73 000"
-            .p24_description — "2 Bedroom Apartment in"
-            .p24_location — "Sea Point"
-            .p24_icons
-              .p24_featureDetails — beds, baths, garages, size
-    """
-    # Find the listing link — the anchor with a listing ID in the URL
+def _parse_tile(tile: Tag, expected_suburb: str | None = None) -> ScrapedListing | None:
+    """Parse a single listing tile from search results."""
     link = tile.select_one("a[href*='/to-rent/']")
     if not link or not link.get("href"):
         return None
@@ -163,23 +260,19 @@ def _parse_tile(tile: Tag) -> ScrapedListing | None:
     if not href.startswith("http"):
         href = BASE_URL + href
 
-    # Must have a listing ID (6+ digits) to be a real listing, not a category page
     source_id = _extract_listing_id(href)
     if not source_id:
         return None
 
-    # Title: combine description + location for a complete title
     desc_el = tile.select_one(".p24_description")
     loc_el = tile.select_one(".p24_location")
 
     desc_text = desc_el.get_text(strip=True) if desc_el else ""
     location = loc_el.get_text(strip=True) if loc_el else ""
 
-    # The description often ends with "in" or "in<Suburb>" (no space)
     title = desc_text.rstrip()
-    # Handle "2 Bedroom Apartment inSea Point" (no space after "in")
     title = re.sub(r"\bin([A-Z])", r"in \1", title)
-    # Handle "2 Bedroom Apartment in" (trailing "in" with no suburb)
+
     if title.endswith(" in") and location:
         title = f"{title} {location}"
     elif location and location not in title:
@@ -188,20 +281,20 @@ def _parse_tile(tile: Tag) -> ScrapedListing | None:
     if not title or len(title) < 5:
         return None
 
-    suburb = location.strip() if location else None
+    suburb = expected_suburb or location.strip() or None
+    location = location or expected_suburb or "Cape Town"
 
-    # Price — .p24_price contains nested children (description, location),
-    # so we only want the direct text nodes
     price_el = tile.select_one(".p24_price")
     price_text = ""
     if price_el:
         price_text = "".join(
             child for child in price_el.children if isinstance(child, str)
         ).strip()
-    price_amount, price_display = _parse_price(price_text) if price_text else (None, "POA")
 
-    # Features: .p24_featureDetails spans in order: beds, baths, garages, size
-    # We identify them by adjacent SVG icons or by position
+    price_amount, price_display = (
+        _parse_price(price_text) if price_text else (None, "POA")
+    )
+
     feature_spans = tile.select(".p24_featureDetails")
     beds = None
     baths = None
@@ -209,12 +302,11 @@ def _parse_tile(tile: Tag) -> ScrapedListing | None:
 
     for span in feature_spans:
         text = span.get_text(strip=True)
-        # Size has "m²" in it
+
         if "m²" in text:
             size = _parse_int(text)
             continue
 
-        # Check the preceding sibling SVG for icon type
         prev = span.find_previous_sibling()
         if prev and prev.name == "svg":
             svg_classes = " ".join(prev.get("class", []))
@@ -222,9 +314,7 @@ def _parse_tile(tile: Tag) -> ScrapedListing | None:
                 beds = _parse_int(text)
             elif "bathroom" in svg_classes.lower() or "bath" in svg_classes.lower():
                 baths = _parse_int(text)
-            # Skip garage/parking icons
 
-    # If we couldn't identify by icons, use positional order: beds, baths, garages, size
     if beds is None and len(feature_spans) >= 1:
         non_size = [s for s in feature_spans if "m²" not in s.get_text()]
         if len(non_size) >= 1:
@@ -232,16 +322,15 @@ def _parse_tile(tile: Tag) -> ScrapedListing | None:
         if len(non_size) >= 2 and baths is None:
             baths = _parse_int(non_size[1].get_text(strip=True))
 
-    # Image
     img = tile.select_one("img.js_P24_listingImage")
     image_url = None
     if img:
         image_url = img.get("src") or img.get("data-src")
 
-    # Property type from title
     property_type = None
     title_lower = title.lower()
-    for ptype in ["apartment", "flat", "house", "townhouse", "penthouse", "cottage", "studio", "duplex"]:
+
+    for ptype in sorted(RESIDENTIAL_PROPERTY_TYPES, key=len, reverse=True):
         if ptype in title_lower:
             property_type = ptype.title()
             break
@@ -268,13 +357,7 @@ def _parse_tile(tile: Tag) -> ScrapedListing | None:
 
 
 def scrape_listing_detail(url: str, client: httpx.Client | None = None) -> dict:
-    """Fetch additional detail from an individual listing page.
-
-    Returns a dict with description, amenities, images, contact info, and
-    structured features like furnished/pets from the detail page.
-
-    Pass an existing `client` session for batch operations (reuses cookies).
-    """
+    """Fetch additional detail from an individual listing page."""
     logger.info(f"Scraping listing detail: {url}")
 
     own_client = client is None
@@ -291,28 +374,26 @@ def scrape_listing_detail(url: str, client: httpx.Client | None = None) -> dict:
     soup = BeautifulSoup(resp.text, "html.parser")
     detail: dict = {}
 
-    # Description
     desc_el = soup.select_one(".js_readMore")
     if desc_el:
         detail["description"] = desc_el.get_text(strip=True)[:2000]
 
-    # Structured features (Pet Friendly, Furnished, Pool, etc.)
     amenities = []
     for feat in soup.select(".p24_listingFeatures"):
         text = feat.get_text(strip=True)
         if text and ":" not in text:
-            # Features without values are boolean amenities (e.g. "Pet Friendly", "Pool")
             amenities.append(text)
     detail["amenities"] = amenities
 
-    # Check furnished/pets from features
-    features_text = " ".join(f.get_text(strip=True).lower() for f in soup.select(".p24_listingFeatures"))
+    features_text = " ".join(
+        f.get_text(strip=True).lower() for f in soup.select(".p24_listingFeatures")
+    )
+
     if "furnished" in features_text:
         detail["furnished"] = True
     if "pet friendly" in features_text or "pet" in features_text:
         detail["pets_allowed"] = True
 
-    # Property overview rows (floor size, occupation date, etc.)
     for row in soup.select(".p24_propertyOverviewRow"):
         key_el = row.select_one(".p24_propertyOverviewKey")
         val_el = row.select_one(".p24_propertyOverviewResult")
@@ -326,17 +407,16 @@ def scrape_listing_detail(url: str, client: httpx.Client | None = None) -> dict:
             elif "occupation" in key or "available" in key:
                 detail["available_from"] = val
 
-    # All images
     images = []
     for img in soup.select("img[src*='images.prop24'], img.js_P24_listingImage"):
         src = img.get("src") or img.get("data-src")
         if src and src not in images:
             images.append(src)
+
     if images:
         detail["image_urls"] = images[:10]
         detail["image_url"] = images[0]
 
-    # Agent info
     agent_el = soup.select_one(".p24_agentName, .p24_agent_name")
     if agent_el:
         detail["contact_name"] = agent_el.get_text(strip=True)
@@ -348,23 +428,57 @@ def scrape_listing_detail(url: str, client: httpx.Client | None = None) -> dict:
     return detail
 
 
-def run_full_scrape(max_pages: int = 5, detail_delay: float = 1.0) -> list[ScrapedListing]:
-    """Run a full scrape across multiple search pages."""
+def run_full_scrape(
+    max_pages: int = 3,
+    detail_delay: float = 1.0,
+    target_suburbs: list[str] | None = None,
+) -> list[ScrapedListing]:
+    """Run a targeted scrape across selected suburbs."""
     all_listings: list[ScrapedListing] = []
     seen_urls: set[str] = set()
 
-    for page in range(1, max_pages + 1):
-        try:
-            page_listings = scrape_search_page(page)
-            for listing in page_listings:
-                if listing.source_url not in seen_urls:
-                    seen_urls.add(listing.source_url)
-                    all_listings.append(listing)
-            if page < max_pages:
-                time.sleep(2)
-        except Exception:
-            logger.exception(f"Failed to scrape page {page}")
+    suburbs_to_scrape = target_suburbs or list(TARGET_SUBURB_URLS.keys())
+
+    for suburb in suburbs_to_scrape:
+        search_url = TARGET_SUBURB_URLS.get(suburb)
+
+        if not search_url:
+            logger.warning(f"Skipping unknown target suburb: {suburb}")
             continue
 
-    logger.info(f"Full scrape complete: {len(all_listings)} unique listings across {max_pages} pages")
+        logger.info(f"Starting targeted scrape for {suburb}: {search_url}")
+
+        for page in range(1, max_pages + 1):
+            try:
+                page_listings = scrape_search_page(
+                    page=page,
+                    search_url=search_url,
+                    expected_suburb=suburb,
+                )
+
+                if not page_listings:
+                    logger.info(
+                        f"No listings found for {suburb} page {page}; moving on"
+                    )
+                    break
+
+                for listing in page_listings:
+                    if listing.source_url not in seen_urls:
+                        seen_urls.add(listing.source_url)
+                        all_listings.append(listing)
+
+                if page < max_pages:
+                    time.sleep(2)
+
+            except Exception:
+                logger.exception(f"Failed to scrape {suburb} page {page}")
+                continue
+
+        time.sleep(2)
+
+    logger.info(
+        f"Targeted scrape complete: {len(all_listings)} unique residential listings "
+        f"across {len(suburbs_to_scrape)} target suburbs"
+    )
+
     return all_listings
