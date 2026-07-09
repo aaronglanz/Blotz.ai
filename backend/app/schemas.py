@@ -12,10 +12,22 @@ class LocationInput(BaseModel):
     place_id: str | None = None
 
 
+class SearchHardFilters(BaseModel):
+    suburb: str | None = None
+    bedrooms: int | None = None
+    bathrooms: int | None = None
+    min_price: int | None = None
+    max_price: int | None = None
+    property_type: str | None = None
+    furnished: bool | None = None
+    pets_allowed: bool | None = None
+
+
 class SearchRequest(BaseModel):
     query_text: str
     location: LocationInput | None = None
     preferences: list[str] | None = None
+    hard_filters: SearchHardFilters | None = None
 
 
 class SearchResultSchema(BaseModel):

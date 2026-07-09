@@ -6,10 +6,22 @@ export interface LocationInput {
   place_id?: string;
 }
 
+export interface SearchHardFilters {
+  suburb?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  min_price?: number;
+  max_price?: number;
+  property_type?: string;
+  furnished?: boolean;
+  pets_allowed?: boolean;
+}
+
 export interface SearchRequest {
   query_text: string;
   location?: LocationInput;
   preferences?: string[];
+  hard_filters?: SearchHardFilters;
 }
 
 export interface SearchResult {
