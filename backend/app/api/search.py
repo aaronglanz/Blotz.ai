@@ -4,7 +4,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,118 +17,126 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
+def _build_ranking_hard_filters(
+    hard_filters: dict | None,
+    location: dict | None = None,
+) -> dict:
+    """Convert request hard filters into the shape expected by ranking.py.
 
+    The database query is the source of truth for hard filtering.
+    This is only kept for scoring/explanation consistency.
+    """
+    hard_filters = hard_filters or {}
+
+    areas = []
+
+    if hard_filters.get("suburb"):
+        areas.append(hard_filters["suburb"])
+    elif location and location.get("name"):
+        areas.append(location["name"])
+
+    return {
+        "max_price": hard_filters.get("max_price"),
+        "min_bedrooms": hard_filters.get("bedrooms"),
+        "min_bathrooms": hard_filters.get("bathrooms"),
+        "areas": areas,
+    }
+    
 async def _fetch_candidate_listings(
     db: AsyncSession,
-    intent: dict,
+    hard_filters: dict | None = None,
     location: dict | None = None,
-    query_text: str | None = None,
-    limit: int = 80,
+    limit: int = 120,
 ) -> list[dict]:
-    """Pre-filter cached listings based on structured criteria from the intent.
+    """Fetch candidate listings using explicit hard filters.
 
-    Returns up to `limit` listings as dicts for ranking.
+    Hard filters are deterministic and should be applied in SQL:
+    - suburb
+    - bedrooms
+    - bathrooms
+    - price
+    - property type
+    - furnished
+    - pets allowed
+
+    Natural language should not decide these filters anymore.
     """
+    hard_filters = hard_filters or {}
+
     query = select(CachedListing).where(CachedListing.is_active == True)
 
-    # Apply structured filters if the intent extracted them
-    tags = intent.get("interpreted_tags", [])
-    tag_labels = [t.get("label", "").lower() for t in tags]
+    suburb = hard_filters.get("suburb")
+    if not suburb and location and location.get("name"):
+        suburb = location["name"]
 
-    KNOWN_CAPE_TOWN_SUBURBS = [
-        "Sea Point",
-        "Green Point",
-        "Mouille Point",
-        "Camps Bay",
-        "Clifton",
-        "Bantry Bay",
-        "Fresnaye",
-        "Gardens",
-        "Tamboerskloof",
-        "Vredehoek",
-        "Oranjezicht",
-        "Observatory",
-        "Woodstock",
-        "Claremont",
-        "Rondebosch",
-        "Newlands",
-        "Waterfront",
-        "De Waterkant",
-        "City Bowl",
-    ]
+    if suburb:
+        query = query.where(CachedListing.suburb.ilike(f"%{suburb}%"))
 
-    query_for_location = " ".join(
-        [
-            query_text or "",
-            intent.get("improved_prompt", "") or "",
-            " ".join(tag_labels),
-        ]
-    ).lower()
+    bedrooms = hard_filters.get("bedrooms")
+    if bedrooms is not None:
+        # For selected hard filters, "2 bedrooms" should mean exactly 2.
+        query = query.where(CachedListing.bedrooms == int(bedrooms))
 
-    detected_suburb = None
-    for suburb in KNOWN_CAPE_TOWN_SUBURBS:
-        if suburb.lower() in query_for_location:
-            detected_suburb = suburb
-            break
+    bathrooms = hard_filters.get("bathrooms")
+    if bathrooms is not None:
+        # Bathrooms are usually better treated as minimums.
+        query = query.where(CachedListing.bathrooms >= int(bathrooms))
 
-    # Location filter — prioritize the explicit location from the frontend,
-    # then deterministic suburb extraction from the text,
-    # then fall back to any location tag from intent interpretation.
-    location_applied = False
+    min_price = hard_filters.get("min_price")
+    if min_price is not None:
+        query = query.where(CachedListing.price_amount >= int(min_price))
 
-    if location and location.get("name"):
-        query = query.where(CachedListing.suburb.ilike(f"%{location['name']}%"))
-        location_applied = True
+    max_price = hard_filters.get("max_price")
+    if max_price is not None:
+        query = query.where(CachedListing.price_amount <= int(max_price))
 
-    if not location_applied and detected_suburb:
-        query = query.where(CachedListing.suburb.ilike(f"%{detected_suburb}%"))
-        location_applied = True
+    property_type = hard_filters.get("property_type")
+    if property_type:
+        ptype = property_type.lower().strip()
 
-    if not location_applied:
-        for tag in tags:
-            if tag.get("category") == "location":
-                suburb = tag.get("label", "")
-                if suburb:
-                    query = query.where(CachedListing.suburb.ilike(f"%{suburb}%"))
-                    location_applied = True
-                    break
+        if ptype in {"apartment", "flat"}:
+            query = query.where(
+                or_(
+                    CachedListing.property_type.ilike("%apartment%"),
+                    CachedListing.property_type.ilike("%flat%"),
+                    CachedListing.title.ilike("%apartment%"),
+                    CachedListing.title.ilike("%flat%"),
+                )
+            )
+        elif ptype in {"studio"}:
+            query = query.where(
+                or_(
+                    CachedListing.property_type.ilike("%studio%"),
+                    CachedListing.title.ilike("%studio%"),
+                )
+            )
+        elif ptype in {"house"}:
+            query = query.where(
+                or_(
+                    CachedListing.property_type.ilike("%house%"),
+                    CachedListing.title.ilike("%house%"),
+                )
+            )
+        else:
+            query = query.where(
+                or_(
+                    CachedListing.property_type.ilike(f"%{property_type}%"),
+                    CachedListing.title.ilike(f"%{property_type}%"),
+                )
+            )
 
-    # Budget filter — extract price range from budget tags
-    for tag in tags:
-        if tag.get("category") == "budget":
-            label = tag.get("label", "")
+    furnished = hard_filters.get("furnished")
+    if furnished is not None:
+        query = query.where(CachedListing.furnished == bool(furnished))
 
-            amounts = [
-                int(m.replace(" ", "").replace(",", ""))
-                for m in re.findall(r"(\d[\d\s,]+)", label)
-            ]
+    pets_allowed = hard_filters.get("pets_allowed")
+    if pets_allowed is not None:
+        query = query.where(CachedListing.pets_allowed == bool(pets_allowed))
 
-            if amounts:
-                max_budget = max(amounts)
-
-                # Allow 20% over stated max for flexibility
-                query = query.where(CachedListing.price_amount <= int(max_budget * 1.2))
-
-                if len(amounts) >= 2:
-                    min_budget = min(amounts)
-                    query = query.where(CachedListing.price_amount >= int(min_budget * 0.8))
-
-                break
-
-    # Bedroom filter
-    for label in tag_labels:
-        bed_match = re.search(r"(\d+)\s*bed", label)
-        if bed_match:
-            query = query.where(CachedListing.bedrooms >= int(bed_match.group(1)))
-            break
-
-    # Prefer listings with descriptions because they score better
     query = query.order_by(
         CachedListing.description.isnot(None).desc(),
         CachedListing.first_seen_at.desc(),
-    )
-
-    query = query.limit(limit)
+    ).limit(limit)
 
     result = await db.execute(query)
     listings = result.scalars().all()
@@ -162,6 +170,7 @@ async def _run_search_background(
     search_id: uuid.UUID,
     query_text: str,
     location: dict | None,
+    hard_filters: dict | None = None,
 ):
     """Run the search in the background using its own DB session.
 
@@ -217,9 +226,8 @@ async def _run_search_background(
 
             candidates = await _fetch_candidate_listings(
     db=db,
-    intent=intent,
+    hard_filters=hard_filters,
     location=location,
-    query_text=query_text,
 )
 
             logger.info(
@@ -238,7 +246,11 @@ async def _run_search_background(
                     intent=intent,
                     location=location,
                 )
-
+                # Hard filters come from the frontend controls, not the natural-language query.
+                user_preferences["hard_filters"] = _build_ranking_hard_filters(
+                    hard_filters=hard_filters,
+                    location=location,
+                )
                 search.interpreted_intent = {
                     **(search.interpreted_intent or {}),
                     "intent": intent,
@@ -359,12 +371,15 @@ async def _run_search_background(
 
 @router.post("", response_model=dict)
 async def create_search(req: SearchRequest, db: AsyncSession = Depends(get_db)):
+    hard_filters = req.hard_filters.model_dump() if req.hard_filters else None
+
     search = Search(
         id=uuid.uuid4(),
         query_text=req.query_text,
         status="pending",
         interpreted_intent={
-            "location": req.location.model_dump() if req.location else None
+            "location": req.location.model_dump() if req.location else None,
+            "hard_filters": hard_filters,
         },
     )
 
@@ -378,7 +393,14 @@ async def create_search(req: SearchRequest, db: AsyncSession = Depends(get_db)):
         location = search.interpreted_intent["location"]
 
     # Fire and forget — the frontend polls GET /search/{id} for updates
-    asyncio.create_task(_run_search_background(search_id, req.query_text, location))
+    asyncio.create_task(
+    _run_search_background(
+        search_id=search_id,
+        query_text=req.query_text,
+        location=location,
+        hard_filters=hard_filters,
+    )
+)
 
     return {"id": str(search_id), "status": "pending"}
 

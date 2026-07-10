@@ -29,3 +29,5 @@ backend/celerybeat-schedule
 celerybeat-schedule
 .env
 backend/.env
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
