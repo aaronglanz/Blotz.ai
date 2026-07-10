@@ -24,3 +24,8 @@ postgres_data/
 
 # OS
 .DS_Store
+
+backend/celerybeat-schedule
+celerybeat-schedule
+.env
+backend/.env

@@ -103,14 +103,15 @@ export default function ListingDetailPage() {
           <button
             className={`save-btn overlay${isSaved ? " saved" : ""}`}
             onClick={() => savedListings.toggleSaved({
-              id: listing.id,
-              title: listing.title,
-              location: listing.location,
-              price: listing.price,
-              image_url: listing.image_url || null,
-              url: null,
-              source: "Nestly",
-            })}
+  id: listing.id,
+  listing_id: listing.id,
+  title: listing.title,
+  location: listing.location,
+  price: listing.price,
+  image_url: listing.image_url,
+  url: null,
+  source: "Nestly",
+})}
           >
             {isSaved ? "❤️" : "🤍"}
           </button>

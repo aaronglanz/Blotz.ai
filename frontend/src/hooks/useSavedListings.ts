@@ -2,17 +2,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSavedListings, saveListing, unsaveListing } from "../api/listings";
 import type { RankedListing, SavedListing, SearchResult } from "../types";
 
-type SaveableListing = SearchResult | RankedListing | SavedListing;
+export type SaveableListing = {
+  id?: string;
+  listing_id?: string | null;
+  url?: string | null;
+  title: string;
+  location?: string | null;
+  price?: string | null;
+  source?: string | null;
+  image_url?: string | null;
+};
 
 function getListingUrl(listing: SaveableListing): string | null {
-  if ("url" in listing && listing.url) return listing.url;
-  return null;
+  return listing.url ?? null;
 }
 
 function getListingId(listing: SaveableListing): string | null {
-  if ("listing_id" in listing) return listing.listing_id;
-  if ("bedrooms" in listing) return listing.id;
-  return null;
+  return listing.listing_id ?? listing.id ?? null;
 }
 
 export function useSavedListings() {
