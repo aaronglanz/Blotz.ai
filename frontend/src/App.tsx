@@ -9,7 +9,7 @@ import SearchBar from "./components/SearchBar";
 import PreferenceChips from "./components/PreferenceChips";
 import TrustBadges from "./components/TrustBadges";
 import ResultsSection from "./components/ResultsSection";
-import type { LocationInput, Search, SearchResult } from "./types";
+import type { LocationInput, Search, SearchHardFilters, SearchResult } from "./types";
 
 const SUBURB_IMGS: Record<string, string> = {
   "sea point": "photo-1580060839134-75a5edca2e99",
@@ -47,8 +47,11 @@ export default function App() {
   const [selectedLocation, setSelectedLocation] = useState<LocationInput | null>(null);
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
   const [searchId, setSearchId] = useState<string | null>(null);
-  const savedListings = useSavedListings();
 
+  const [hardFilters, setHardFilters] = useState<SearchHardFilters>({
+  property_type: "Apartment",
+});
+const savedListings = useSavedListings();
   // Search history
   const historyQuery = useQuery({
     queryKey: ["search-history"],
@@ -86,11 +89,17 @@ export default function App() {
   const handleSubmit = useCallback(() => {
     const q = query.trim();
     if (!q) return;
-    submitMutation.mutate({
-      query_text: q,
-      location: selectedLocation || undefined,
-    });
-  }, [query, selectedLocation, submitMutation]);
+    const cleanedHardFilters: SearchHardFilters = {
+  ...hardFilters,
+  suburb: hardFilters.suburb || selectedLocation?.name || undefined,
+};
+
+submitMutation.mutate({
+  query_text: q,
+  location: selectedLocation || undefined,
+  hard_filters: cleanedHardFilters,
+});
+  }, [query, selectedLocation, hardFilters, submitMutation]);
 
   const handleQueryChange = useCallback((val: string) => {
     setQuery(val);
@@ -140,6 +149,100 @@ export default function App() {
             onSubmit={handleSubmit}
             isLoading={isSearching}
           />
+          <div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(5, minmax(120px, 1fr))",
+    gap: 10,
+    marginTop: 14,
+    background: "rgba(255,255,255,0.92)",
+    padding: 12,
+    borderRadius: 18,
+    boxShadow: "0 12px 30px rgba(0,0,0,0.10)",
+  }}
+>
+  <select
+    value={hardFilters.suburb || ""}
+    onChange={(e) =>
+      setHardFilters((prev) => ({
+        ...prev,
+        suburb: e.target.value || undefined,
+      }))
+    }
+  >
+    <option value="">Any area</option>
+    <option value="Sea Point">Sea Point</option>
+    <option value="Green Point">Green Point</option>
+    <option value="Mouille Point">Mouille Point</option>
+    <option value="Gardens">Gardens</option>
+    <option value="Vredehoek">Vredehoek</option>
+    <option value="Tamboerskloof">Tamboerskloof</option>
+    <option value="Claremont">Claremont</option>
+    <option value="Rondebosch">Rondebosch</option>
+    <option value="Newlands">Newlands</option>
+    <option value="Observatory">Observatory</option>
+    <option value="Woodstock">Woodstock</option>
+  </select>
+
+  <select
+    value={hardFilters.bedrooms ?? ""}
+    onChange={(e) =>
+      setHardFilters((prev) => ({
+        ...prev,
+        bedrooms: e.target.value ? Number(e.target.value) : undefined,
+      }))
+    }
+  >
+    <option value="">Any beds</option>
+    <option value="0">Studio</option>
+    <option value="1">1 bed</option>
+    <option value="2">2 beds</option>
+    <option value="3">3 beds</option>
+    <option value="4">4+ beds</option>
+  </select>
+
+  <select
+    value={hardFilters.bathrooms ?? ""}
+    onChange={(e) =>
+      setHardFilters((prev) => ({
+        ...prev,
+        bathrooms: e.target.value ? Number(e.target.value) : undefined,
+      }))
+    }
+  >
+    <option value="">Any baths</option>
+    <option value="1">1+ bath</option>
+    <option value="2">2+ baths</option>
+    <option value="3">3+ baths</option>
+  </select>
+
+  <input
+    type="number"
+    placeholder="Max rent"
+    value={hardFilters.max_price ?? ""}
+    onChange={(e) =>
+      setHardFilters((prev) => ({
+        ...prev,
+        max_price: e.target.value ? Number(e.target.value) : undefined,
+      }))
+    }
+  />
+
+  <select
+    value={hardFilters.property_type || ""}
+    onChange={(e) =>
+      setHardFilters((prev) => ({
+        ...prev,
+        property_type: e.target.value || undefined,
+      }))
+    }
+  >
+    <option value="">Any type</option>
+    <option value="Apartment">Apartment</option>
+    <option value="House">House</option>
+    <option value="Studio">Studio</option>
+  </select>
+</div>
           <PreferenceChips
             activeChips={activeChips}
             onToggle={handleChipToggle}
